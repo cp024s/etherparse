@@ -1,6 +1,6 @@
 // ============================================================
 // Testbench: ethernet_frame_parser_tb
-// Fully Icarus-compatible
+// FINAL – simulator-proof (Vivado / Icarus / Questa)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -8,14 +8,23 @@ import eth_parser_pkg::*;
 
 module ethernet_frame_parser_tb;
 
+  // ----------------------------------------------------------
+  // Parameters
+  // ----------------------------------------------------------
   localparam int DATA_WIDTH = 64;
   localparam int CLK_PERIOD = 10;
 
+  // ----------------------------------------------------------
+  // Clock & reset
+  // ----------------------------------------------------------
   logic clk;
   logic rst_n;
 
   always #(CLK_PERIOD/2) clk = ~clk;
 
+  // ----------------------------------------------------------
+  // AXI Stream signals
+  // ----------------------------------------------------------
   logic [DATA_WIDTH-1:0] s_axis_tdata;
   logic                  s_axis_tvalid;
   logic                  s_axis_tready;
@@ -29,6 +38,9 @@ module ethernet_frame_parser_tb;
   eth_metadata_t         m_axis_tuser;
   logic                  m_axis_tuser_valid;
 
+  // ----------------------------------------------------------
+  // DUT
+  // ----------------------------------------------------------
   ethernet_frame_parser #(
     .DATA_WIDTH(DATA_WIDTH)
   ) dut (
@@ -46,9 +58,15 @@ module ethernet_frame_parser_tb;
     .m_axis_tuser_valid(m_axis_tuser_valid)
   );
 
+  // ----------------------------------------------------------
+  // Global frame buffer (Icarus-safe)
+  // ----------------------------------------------------------
   byte frame_buf [0:255];
   int  frame_len;
 
+  // ----------------------------------------------------------
+  // Tasks
+  // ----------------------------------------------------------
   task send_beat(
     input logic [DATA_WIDTH-1:0] data,
     input logic last
@@ -77,10 +95,10 @@ module ethernet_frame_parser_tb;
       i = 0;
       while (i < frame_len) begin
         beat = '0;
-        for (b = 0; b < DATA_WIDTH/8; b = b + 1) begin
+        for (b = 0; b < DATA_WIDTH/8; b++) begin
           if (i < frame_len) begin
             beat[b*8 +: 8] = frame_buf[i];
-            i = i + 1;
+            i++;
           end
         end
         send_beat(beat, (i >= frame_len));
@@ -88,7 +106,36 @@ module ethernet_frame_parser_tb;
     end
   endtask
 
+  // ----------------------------------------------------------
+  // Helper: wait for metadata with timeout
+  // ----------------------------------------------------------
+  task wait_for_metadata;
+    int timeout;
+    begin
+      timeout = 0;
+      while (!m_axis_tuser_valid && timeout < 2000) begin
+        @(posedge clk);
+        timeout++;
+      end
+
+      if (!m_axis_tuser_valid) begin
+        $display("ERROR: metadata_valid never asserted");
+        $display("DEBUG:");
+        $display("  header_done  = %0d", dut.header_done);
+        $display("  fields_valid = %0d", dut.fields_valid);
+        $display("  vlan_valid   = %0d", dut.vlan_valid);
+        $display("  proto_valid  = %0d", dut.proto_valid);
+        $display("  frame_end    = %0d", dut.frame_end);
+        $finish(1);
+      end
+    end
+  endtask
+
+  // ----------------------------------------------------------
+  // Test sequence
+  // ----------------------------------------------------------
   initial begin
+    // Init
     clk = 0;
     rst_n = 0;
     s_axis_tvalid = 0;
@@ -96,12 +143,13 @@ module ethernet_frame_parser_tb;
     s_axis_tdata  = '0;
     m_axis_tready = 1;
 
+    // Reset
     repeat (5) @(posedge clk);
     rst_n = 1;
 
-    // ===============================
-    // Test 1: Non-VLAN IPv4
-    // ===============================
+    // ======================================================
+    // TEST 1: Non-VLAN IPv4 frame
+    // ======================================================
     $display("=== Test 1: Non-VLAN IPv4 frame ===");
 
     frame_len = 18;
@@ -114,7 +162,7 @@ module ethernet_frame_parser_tb;
     frame_buf[16]=8'hBE; frame_buf[17]=8'hEF;
 
     send_frame();
-    wait (m_axis_tuser_valid);
+    wait_for_metadata();
 
     if (!m_axis_tuser.is_ipv4) begin
       $display("ERROR: IPv4 not detected");
@@ -127,9 +175,9 @@ module ethernet_frame_parser_tb;
 
     $display("✔ Non-VLAN IPv4 frame passed");
 
-    // ===============================
-    // Test 2: VLAN IPv4
-    // ===============================
+    // ======================================================
+    // TEST 2: VLAN IPv4 frame
+    // ======================================================
     $display("=== Test 2: VLAN IPv4 frame ===");
 
     frame_len = 22;
@@ -144,7 +192,7 @@ module ethernet_frame_parser_tb;
     frame_buf[20]=8'hBA; frame_buf[21]=8'hBE;
 
     send_frame();
-    wait (m_axis_tuser_valid);
+    wait_for_metadata();
 
     if (!m_axis_tuser.vlan_present) begin
       $display("ERROR: VLAN not detected");
@@ -160,8 +208,10 @@ module ethernet_frame_parser_tb;
     end
 
     $display("✔ VLAN IPv4 frame passed");
+
+    // ======================================================
     $display("=== ALL TESTS PASSED ===");
-    #50;
+    #20;
     $finish;
   end
 
