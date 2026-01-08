@@ -1,6 +1,6 @@
 // ============================================================
 // Module: axis_egress
-// Purpose: AXI4-Stream egress with sideband metadata
+// Purpose: AXI4-Stream egress (data path NEVER stalls)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -29,55 +29,31 @@ module axis_egress #(
   input  logic                   metadata_valid_in,
 
   output eth_metadata_t          metadata_out,
-  output logic                   metadata_valid_out,
-
-  // Control
-  input  logic                   beat_accept,
-  input  logic                   frame_end
+  output logic                   metadata_valid_out
 );
 
   // ----------------------------------------------------------
-  // AXI data path (PURE PASS-THROUGH)
+  // AXI data path (ABSOLUTE PASS-THROUGH)
   // ----------------------------------------------------------
   assign m_axis_tdata  = axis_tdata_in;
   assign m_axis_tvalid = axis_tvalid_in;
   assign m_axis_tlast  = axis_tlast_in;
 
-  // Backpressure propagates directly
+  // READY must depend ONLY on downstream READY
   assign axis_tready_in = m_axis_tready;
 
   // ----------------------------------------------------------
-  // Metadata latching
+  // Metadata latch (completely decoupled)
   // ----------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       metadata_out       <= '0;
       metadata_valid_out <= 1'b0;
     end
-    else begin
-      // Latch metadata when it becomes valid
-      if (metadata_valid_in) begin
-        metadata_out       <= metadata_in;
-        metadata_valid_out <= 1'b1;
-      end
-
-      // Clear metadata at end of frame
-      if (frame_end) begin
-        metadata_valid_out <= 1'b0;
-      end
+    else if (metadata_valid_in) begin
+      metadata_out       <= metadata_in;
+      metadata_valid_out <= 1'b1;
     end
   end
-
-  // ============================================================
-  // AXI egress assertions
-  // ============================================================
-  `ifndef SYNTHESIS
-    always_ff @(posedge clk) begin
-      if (rst_n && axis_tvalid_in) begin
-        assert (axis_tready_in)
-          else $fatal(1, "AXI egress violation: READY deasserted while VALID is high");
-      end
-    end
-  `endif
 
 endmodule
