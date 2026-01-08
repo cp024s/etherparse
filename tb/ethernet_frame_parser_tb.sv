@@ -1,6 +1,6 @@
 // ============================================================
 // Testbench: ethernet_frame_parser_tb
-// Compatible with Icarus Verilog (-g2012)
+// Icarus Verilog compatible (NO unpacked array args)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -59,7 +59,13 @@ module ethernet_frame_parser_tb;
   );
 
   // ----------------------------------------------------------
-  // Tasks
+  // GLOBAL FRAME BUFFERS (Icarus-safe)
+  // ----------------------------------------------------------
+  byte frame_buf [0:255];
+  int  frame_len;
+
+  // ----------------------------------------------------------
+  // Tasks (NO array arguments!)
   // ----------------------------------------------------------
 
   task send_beat(
@@ -71,7 +77,6 @@ module ethernet_frame_parser_tb;
       s_axis_tvalid = 1'b1;
       s_axis_tlast  = last;
 
-      // Wait until DUT accepts the beat
       while (!s_axis_tready)
         @(posedge clk);
 
@@ -83,82 +88,67 @@ module ethernet_frame_parser_tb;
     end
   endtask
 
-  task send_frame(
-    input byte frame [0:255],
-    input int  length
-  );
+  task send_frame;
     int i;
     int b;
     logic [DATA_WIDTH-1:0] beat;
     begin
       i = 0;
-      while (i < length) begin
+      while (i < frame_len) begin
         beat = '0;
         for (b = 0; b < DATA_WIDTH/8; b = b + 1) begin
-          if (i < length) begin
-            beat[b*8 +: 8] = frame[i];
+          if (i < frame_len) begin
+            beat[b*8 +: 8] = frame_buf[i];
             i = i + 1;
           end
         end
-        send_beat(beat, (i >= length));
+        send_beat(beat, (i >= frame_len));
       end
     end
   endtask
 
   // ----------------------------------------------------------
-  // Test frames (STATIC ARRAYS — Icarus safe)
-  // ----------------------------------------------------------
-
-  byte ipv4_frame [0:255];
-  int  ipv4_len;
-
-  byte vlan_frame [0:255];
-  int  vlan_len;
-
-  // ----------------------------------------------------------
   // Test sequence
   // ----------------------------------------------------------
-
   initial begin
     // Init
-    clk = 1'b0;
-    rst_n = 1'b0;
-    s_axis_tvalid = 1'b0;
-    s_axis_tlast  = 1'b0;
+    clk = 0;
+    rst_n = 0;
+    s_axis_tvalid = 0;
+    s_axis_tlast  = 0;
     s_axis_tdata  = '0;
-    m_axis_tready = 1'b1;
+    m_axis_tready = 1;
 
-    // Reset
     repeat (5) @(posedge clk);
-    rst_n = 1'b1;
+    rst_n = 1;
 
-    // ------------------------------------------------------
-    // Test 1: Non-VLAN IPv4 frame
-    // ------------------------------------------------------
+    // ======================================================
+    // TEST 1: Non-VLAN IPv4 frame
+    // ======================================================
     $display("=== Test 1: Non-VLAN IPv4 frame ===");
 
-    ipv4_len = 18;
+    frame_len = 18;
 
-    ipv4_frame[0]  = 8'hFF;
-    ipv4_frame[1]  = 8'hFF;
-    ipv4_frame[2]  = 8'hFF;
-    ipv4_frame[3]  = 8'hFF;
-    ipv4_frame[4]  = 8'hFF;
-    ipv4_frame[5]  = 8'hFF;
-    ipv4_frame[6]  = 8'h00;
-    ipv4_frame[7]  = 8'h11;
-    ipv4_frame[8]  = 8'h22;
-    ipv4_frame[9]  = 8'h33;
-    ipv4_frame[10] = 8'h44;
-    ipv4_frame[11] = 8'h55;
-    ipv4_frame[12] = 8'h08;
-    ipv4_frame[13] = 8'h00;
-    ipv4_frame[14] = 8'hDE;
-    ipv4_frame[15] = 8'hAD;
-    ipv4_frame[16] = 8'hBE;
-    ipv4_frame[17] = 8'hEF;
+    frame_buf[0]  = 8'hFF;
+    frame_buf[1]  = 8'hFF;
+    frame_buf[2]  = 8'hFF;
+    frame_buf[3]  = 8'hFF;
+    frame_buf[4]  = 8'hFF;
+    frame_buf[5]  = 8'hFF;
+    frame_buf[6]  = 8'h00;
+    frame_buf[7]  = 8'h11;
+    frame_buf[8]  = 8'h22;
+    frame_buf[9]  = 8'h33;
+    frame_buf[10] = 8'h44;
+    frame_buf[11] = 8'h55;
+    frame_buf[12] = 8'h08;
+    frame_buf[13] = 8'h00;
+    frame_buf[14] = 8'hDE;
+    frame_buf[15] = 8'hAD;
+    frame_buf[16] = 8'hBE;
+    frame_buf[17] = 8'hEF;
 
-    send_frame(ipv4_frame, ipv4_len);
+    send_frame();
 
     wait (m_axis_tuser_valid);
 
@@ -170,37 +160,37 @@ module ethernet_frame_parser_tb;
 
     $display("✔ Non-VLAN IPv4 frame passed");
 
-    // ------------------------------------------------------
-    // Test 2: VLAN IPv4 frame
-    // ------------------------------------------------------
+    // ======================================================
+    // TEST 2: VLAN IPv4 frame
+    // ======================================================
     $display("=== Test 2: VLAN IPv4 frame ===");
 
-    vlan_len = 22;
+    frame_len = 22;
 
-    vlan_frame[0]  = 8'hAA;
-    vlan_frame[1]  = 8'hBB;
-    vlan_frame[2]  = 8'hCC;
-    vlan_frame[3]  = 8'hDD;
-    vlan_frame[4]  = 8'hEE;
-    vlan_frame[5]  = 8'hFF;
-    vlan_frame[6]  = 8'h10;
-    vlan_frame[7]  = 8'h20;
-    vlan_frame[8]  = 8'h30;
-    vlan_frame[9]  = 8'h40;
-    vlan_frame[10] = 8'h50;
-    vlan_frame[11] = 8'h60;
-    vlan_frame[12] = 8'h81;
-    vlan_frame[13] = 8'h00;
-    vlan_frame[14] = 8'h00;
-    vlan_frame[15] = 8'h05; // VLAN ID = 5
-    vlan_frame[16] = 8'h08;
-    vlan_frame[17] = 8'h00;
-    vlan_frame[18] = 8'hCA;
-    vlan_frame[19] = 8'hFE;
-    vlan_frame[20] = 8'hBA;
-    vlan_frame[21] = 8'hBE;
+    frame_buf[0]  = 8'hAA;
+    frame_buf[1]  = 8'hBB;
+    frame_buf[2]  = 8'hCC;
+    frame_buf[3]  = 8'hDD;
+    frame_buf[4]  = 8'hEE;
+    frame_buf[5]  = 8'hFF;
+    frame_buf[6]  = 8'h10;
+    frame_buf[7]  = 8'h20;
+    frame_buf[8]  = 8'h30;
+    frame_buf[9]  = 8'h40;
+    frame_buf[10] = 8'h50;
+    frame_buf[11] = 8'h60;
+    frame_buf[12] = 8'h81;
+    frame_buf[13] = 8'h00;
+    frame_buf[14] = 8'h00;
+    frame_buf[15] = 8'h05;
+    frame_buf[16] = 8'h08;
+    frame_buf[17] = 8'h00;
+    frame_buf[18] = 8'hCA;
+    frame_buf[19] = 8'hFE;
+    frame_buf[20] = 8'hBA;
+    frame_buf[21] = 8'hBE;
 
-    send_frame(vlan_frame, vlan_len);
+    send_frame();
 
     wait (m_axis_tuser_valid);
 
@@ -215,10 +205,8 @@ module ethernet_frame_parser_tb;
 
     $display("✔ VLAN IPv4 frame passed");
 
-    // ------------------------------------------------------
-    // Done
-    // ------------------------------------------------------
-    $display("=== All Ethernet parser tests PASSED ===");
+    // ======================================================
+    $display("=== ALL TESTS PASSED ===");
     #50;
     $finish;
   end
