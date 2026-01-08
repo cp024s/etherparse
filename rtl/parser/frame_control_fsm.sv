@@ -1,6 +1,6 @@
 // ============================================================
 // Module: frame_control_fsm
-// Purpose: Frame lifecycle control for Ethernet frame parser
+// Purpose: Frame lifecycle control (deadlock-safe)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -9,7 +9,7 @@ module frame_control_fsm (
   input  logic clk,
   input  logic rst_n,
 
-  // AXI handshake indicators
+  // AXI handshake
   input  logic beat_accept,
   input  logic tlast,
 
@@ -24,13 +24,12 @@ module frame_control_fsm (
 );
 
   // ----------------------------------------------------------
-  // State definition
+  // State encoding
   // ----------------------------------------------------------
   typedef enum logic [1:0] {
-    IDLE,
-    IN_HEADER,
-    IN_PAYLOAD,
-    END_FRAME
+    ST_IDLE,
+    ST_HEADER,
+    ST_PAYLOAD
   } state_t;
 
   state_t state, state_n;
@@ -40,71 +39,66 @@ module frame_control_fsm (
   // ----------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n)
-      state <= IDLE;
+      state <= ST_IDLE;
     else
       state <= state_n;
   end
 
   // ----------------------------------------------------------
-  // Next-state logic
+  // Next-state logic (PURELY REACTIVE)
   // ----------------------------------------------------------
   always_comb begin
     state_n = state;
 
     case (state)
-      IDLE: begin
+      ST_IDLE: begin
         if (beat_accept)
-          state_n = IN_HEADER;
+          state_n = ST_HEADER;
       end
 
-      IN_HEADER: begin
+      ST_HEADER: begin
         if (beat_accept && tlast)
-          state_n = END_FRAME;
+          state_n = ST_IDLE;
         else if (beat_accept && header_done)
-          state_n = IN_PAYLOAD;
+          state_n = ST_PAYLOAD;
       end
 
-      IN_PAYLOAD: begin
+      ST_PAYLOAD: begin
         if (beat_accept && tlast)
-          state_n = END_FRAME;
+          state_n = ST_IDLE;
       end
 
-      END_FRAME: begin
-        state_n = IDLE;
-      end
-
-      default: state_n = IDLE;
+      default: state_n = ST_IDLE;
     endcase
   end
 
   // ----------------------------------------------------------
-  // Output logic
+  // Output logic (Moore-style, NO gating)
   // ----------------------------------------------------------
   always_comb begin
-    // Defaults
     frame_start = 1'b0;
     frame_end   = 1'b0;
     in_header   = 1'b0;
     in_payload  = 1'b0;
 
     case (state)
-      IDLE: begin
+      ST_IDLE: begin
         if (beat_accept)
           frame_start = 1'b1;
       end
 
-      IN_HEADER: begin
+      ST_HEADER: begin
         in_header = 1'b1;
       end
 
-      IN_PAYLOAD: begin
+      ST_PAYLOAD: begin
         in_payload = 1'b1;
       end
-
-      END_FRAME: begin
-        frame_end = 1'b1;
-      end
     endcase
+
+    // Frame end is event-based, not state-based
+    if (beat_accept && tlast)
+      frame_end = 1'b1;
   end
 
 endmodule
