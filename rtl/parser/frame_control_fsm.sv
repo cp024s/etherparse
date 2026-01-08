@@ -5,31 +5,27 @@
 
 `timescale 1ns/1ps
 
-module frame_control_fsm #(
-  parameter int L2_HEADER_MAX_BYTES = 18
-)(
+module frame_control_fsm (
   input  logic clk,
   input  logic rst_n,
 
-  // AXI handshake indicator
+  // AXI handshake indicators
   input  logic beat_accept,
   input  logic tlast,
 
-  // Byte position info
-  input  logic [$clog2(L2_HEADER_MAX_BYTES+1)-1:0] byte_count,
+  // Header completion (from byte_counter)
+  input  logic header_done,
 
   // Control outputs
   output logic frame_start,
   output logic frame_end,
   output logic in_header,
-  output logic in_payload,
-  output logic header_done
+  output logic in_payload
 );
 
   // ----------------------------------------------------------
   // State definition
   // ----------------------------------------------------------
-
   typedef enum logic [1:0] {
     IDLE,
     IN_HEADER,
@@ -42,7 +38,6 @@ module frame_control_fsm #(
   // ----------------------------------------------------------
   // State register
   // ----------------------------------------------------------
-
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n)
       state <= IDLE;
@@ -53,7 +48,6 @@ module frame_control_fsm #(
   // ----------------------------------------------------------
   // Next-state logic
   // ----------------------------------------------------------
-
   always_comb begin
     state_n = state;
 
@@ -86,7 +80,6 @@ module frame_control_fsm #(
   // ----------------------------------------------------------
   // Output logic
   // ----------------------------------------------------------
-
   always_comb begin
     // Defaults
     frame_start = 1'b0;
@@ -113,16 +106,5 @@ module frame_control_fsm #(
       end
     endcase
   end
-
-  // ----------------------------------------------------------
-  // Header-done condition
-  // ----------------------------------------------------------
-  //
-  // Header is considered complete once byte_count reaches
-  // the maximum L2 header length. VLAN resolver may later
-  // refine the actual header length.
-  //
-
-  assign header_done = (byte_count >= L2_HEADER_MAX_BYTES);
 
 endmodule
