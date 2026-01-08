@@ -52,4 +52,17 @@ module axis_ingress #(
   //
   assign beat_accept = axis_tvalid && axis_tready;
 
+  // ============================================================
+  // AXI ingress assertions
+  // ============================================================
+  `ifndef SYNTHESIS
+    // VALID must not be ignored forever
+    always_ff @(posedge clk) begin
+      if (rst_n && s_axis_tvalid) begin
+        assert (s_axis_tready)
+          else $fatal(1, "AXI ingress violation: TVALID high but TREADY low");
+      end
+    end
+  `endif
+
 endmodule

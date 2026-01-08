@@ -68,4 +68,16 @@ module axis_egress #(
     end
   end
 
+  // ============================================================
+  // AXI egress assertions
+  // ============================================================
+  `ifndef SYNTHESIS
+    always_ff @(posedge clk) begin
+      if (rst_n && axis_tvalid_in) begin
+        assert (axis_tready_in)
+          else $fatal(1, "AXI egress violation: READY deasserted while VALID is high");
+      end
+    end
+  `endif
+
 endmodule
