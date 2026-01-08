@@ -1,6 +1,6 @@
 // ============================================================
 // Testbench: ethernet_frame_parser_tb
-// FINAL – simulator-proof (Vivado / Icarus / Questa)
+// FINAL – AXI-correct, deadlock-free, simulator-safe
 // ============================================================
 
 `timescale 1ns/1ps
@@ -59,34 +59,41 @@ module ethernet_frame_parser_tb;
   );
 
   // ----------------------------------------------------------
-  // Global frame buffer (Icarus-safe)
+  // Frame buffer (Icarus-safe)
   // ----------------------------------------------------------
   byte frame_buf [0:255];
   int  frame_len;
 
   // ----------------------------------------------------------
-  // Tasks
+  // AXI-CORRECT send_beat task (THIS IS CRITICAL)
   // ----------------------------------------------------------
   task send_beat(
     input logic [DATA_WIDTH-1:0] data,
     input logic last
   );
     begin
-      s_axis_tdata  = data;
-      s_axis_tvalid = 1'b1;
-      s_axis_tlast  = last;
+      s_axis_tdata  <= data;
+      s_axis_tlast  <= last;
+      s_axis_tvalid <= 1'b1;
 
-      while (!s_axis_tready)
+      // Hold VALID until a real handshake occurs
+      do begin
         @(posedge clk);
+      end while (!(s_axis_tvalid && s_axis_tready));
 
+      // Deassert after successful transfer
+      s_axis_tvalid <= 1'b0;
+      s_axis_tlast  <= 1'b0;
+      s_axis_tdata  <= '0;
+
+      // Clean separation between beats
       @(posedge clk);
-
-      s_axis_tvalid = 1'b0;
-      s_axis_tlast  = 1'b0;
-      s_axis_tdata  = '0;
     end
   endtask
 
+  // ----------------------------------------------------------
+  // Send entire frame
+  // ----------------------------------------------------------
   task send_frame;
     int i;
     int b;
@@ -107,7 +114,7 @@ module ethernet_frame_parser_tb;
   endtask
 
   // ----------------------------------------------------------
-  // Helper: wait for metadata with timeout
+  // Wait for metadata with timeout (NO SILENT HANGS)
   // ----------------------------------------------------------
   task wait_for_metadata;
     int timeout;
@@ -121,11 +128,13 @@ module ethernet_frame_parser_tb;
       if (!m_axis_tuser_valid) begin
         $display("ERROR: metadata_valid never asserted");
         $display("DEBUG:");
+        $display("  beat_accept  = %0d", dut.beat_accept);
+        $display("  byte_count   = %0d", dut.byte_count);
         $display("  header_done  = %0d", dut.header_done);
+        $display("  header_valid = %0d", dut.header_valid);
         $display("  fields_valid = %0d", dut.fields_valid);
         $display("  vlan_valid   = %0d", dut.vlan_valid);
         $display("  proto_valid  = %0d", dut.proto_valid);
-        $display("  frame_end    = %0d", dut.frame_end);
         $finish(1);
       end
     end
@@ -141,14 +150,14 @@ module ethernet_frame_parser_tb;
     s_axis_tvalid = 0;
     s_axis_tlast  = 0;
     s_axis_tdata  = '0;
-    m_axis_tready = 1;
+    m_axis_tready = 1'b1; // ALWAYS READY
 
     // Reset
     repeat (5) @(posedge clk);
     rst_n = 1;
 
     // ======================================================
-    // TEST 1: Non-VLAN IPv4 frame
+    // TEST 1: Non-VLAN IPv4
     // ======================================================
     $display("=== Test 1: Non-VLAN IPv4 frame ===");
 
@@ -176,7 +185,7 @@ module ethernet_frame_parser_tb;
     $display("✔ Non-VLAN IPv4 frame passed");
 
     // ======================================================
-    // TEST 2: VLAN IPv4 frame
+    // TEST 2: VLAN IPv4
     // ======================================================
     $display("=== Test 2: VLAN IPv4 frame ===");
 
