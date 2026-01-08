@@ -1,10 +1,9 @@
 // ============================================================
 // Module: axis_egress
-// Purpose: AXI-stream egress with metadata alignment
+// Purpose: AXI4-Stream egress with sideband metadata
 // ============================================================
 
 `timescale 1ns/1ps
-
 import eth_parser_pkg::*;
 
 module axis_egress #(
@@ -13,57 +12,59 @@ module axis_egress #(
   input  logic                   clk,
   input  logic                   rst_n,
 
-  // Internal AXI stream input
+  // Internal AXI stream
   input  logic [DATA_WIDTH-1:0]  axis_tdata_in,
   input  logic                   axis_tvalid_in,
   output logic                   axis_tready_in,
   input  logic                   axis_tlast_in,
 
-  // AXI stream output
+  // Output AXI stream
   output logic [DATA_WIDTH-1:0]  m_axis_tdata,
   output logic                   m_axis_tvalid,
   input  logic                   m_axis_tready,
   output logic                   m_axis_tlast,
 
-  // Metadata input (from metadata_packager)
+  // Metadata sideband
   input  eth_metadata_t          metadata_in,
   input  logic                   metadata_valid_in,
 
-  // Metadata output (to downstream pipeline)
   output eth_metadata_t          metadata_out,
   output logic                   metadata_valid_out,
 
-  // Frame control
+  // Control
   input  logic                   beat_accept,
   input  logic                   frame_end
 );
 
   // ----------------------------------------------------------
-  // AXI payload path (pure pass-through)
+  // AXI data path (PURE PASS-THROUGH)
   // ----------------------------------------------------------
-
   assign m_axis_tdata  = axis_tdata_in;
   assign m_axis_tvalid = axis_tvalid_in;
-  assign axis_tready_in = m_axis_tready;
   assign m_axis_tlast  = axis_tlast_in;
 
-  // ----------------------------------------------------------
-  // Metadata alignment logic
-  // ----------------------------------------------------------
+  // Backpressure propagates directly
+  assign axis_tready_in = m_axis_tready;
 
+  // ----------------------------------------------------------
+  // Metadata latching
+  // ----------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       metadata_out       <= '0;
       metadata_valid_out <= 1'b0;
     end
-    else if (metadata_valid_in && !metadata_valid_out) begin
-      // Latch metadata once per frame
-      metadata_out       <= metadata_in;
-      metadata_valid_out <= 1'b1;
-    end
-    else if (frame_end && beat_accept) begin
-      // Clear metadata only after the final beat is accepted
-      metadata_valid_out <= 1'b0;
+    else begin
+      // Latch metadata when it becomes valid
+      if (metadata_valid_in) begin
+        metadata_out       <= metadata_in;
+        metadata_valid_out <= 1'b1;
+      end
+
+      // Clear metadata at end of frame
+      if (frame_end) begin
+        metadata_valid_out <= 1'b0;
+      end
     end
   end
 
