@@ -1,6 +1,6 @@
 // ============================================================
 // Testbench: ethernet_frame_parser_tb
-// FINAL – AXI-correct, deadlock-free, simulator-safe
+// FINAL – AXI-correct + assertion-driven debug
 // ============================================================
 
 `timescale 1ns/1ps
@@ -59,13 +59,13 @@ module ethernet_frame_parser_tb;
   );
 
   // ----------------------------------------------------------
-  // Frame buffer (Icarus-safe)
+  // Frame buffer
   // ----------------------------------------------------------
   byte frame_buf [0:255];
   int  frame_len;
 
   // ----------------------------------------------------------
-  // AXI-CORRECT send_beat task (THIS IS CRITICAL)
+  // AXI-CORRECT send_beat task
   // ----------------------------------------------------------
   task send_beat(
     input logic [DATA_WIDTH-1:0] data,
@@ -76,7 +76,7 @@ module ethernet_frame_parser_tb;
       s_axis_tlast  <= last;
       s_axis_tvalid <= 1'b1;
 
-      // Hold VALID until a real handshake occurs
+      // Hold VALID until handshake completes
       do begin
         @(posedge clk);
       end while (!(s_axis_tvalid && s_axis_tready));
@@ -86,7 +86,7 @@ module ethernet_frame_parser_tb;
       s_axis_tlast  <= 1'b0;
       s_axis_tdata  <= '0;
 
-      // Clean separation between beats
+      // One-cycle gap
       @(posedge clk);
     end
   endtask
@@ -114,7 +114,7 @@ module ethernet_frame_parser_tb;
   endtask
 
   // ----------------------------------------------------------
-  // Wait for metadata with timeout (NO SILENT HANGS)
+  // Wait for metadata with timeout
   // ----------------------------------------------------------
   task wait_for_metadata;
     int timeout;
@@ -141,6 +141,28 @@ module ethernet_frame_parser_tb;
   endtask
 
   // ----------------------------------------------------------
+  // Forward progress assertion
+  // ----------------------------------------------------------
+  int progress_ctr;
+
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      progress_ctr <= 0;
+    end
+    else begin
+      if (dut.beat_accept)
+        progress_ctr <= 0;
+      else
+        progress_ctr <= progress_ctr + 1;
+
+      if (progress_ctr > 50) begin
+        $fatal(1,
+          "PIPELINE STALL: no beat_accept for 50 cycles (AXI deadlock)");
+      end
+    end
+  end
+
+  // ----------------------------------------------------------
   // Test sequence
   // ----------------------------------------------------------
   initial begin
@@ -150,7 +172,7 @@ module ethernet_frame_parser_tb;
     s_axis_tvalid = 0;
     s_axis_tlast  = 0;
     s_axis_tdata  = '0;
-    m_axis_tready = 1'b1; // ALWAYS READY
+    m_axis_tready = 1'b1; // Always ready
 
     // Reset
     repeat (5) @(posedge clk);
@@ -173,14 +195,11 @@ module ethernet_frame_parser_tb;
     send_frame();
     wait_for_metadata();
 
-    if (!m_axis_tuser.is_ipv4) begin
-      $display("ERROR: IPv4 not detected");
-      $finish(1);
-    end
-    if (m_axis_tuser.vlan_present) begin
-      $display("ERROR: Unexpected VLAN detected");
-      $finish(1);
-    end
+    if (!m_axis_tuser.is_ipv4)
+      $fatal(1, "IPv4 not detected");
+
+    if (m_axis_tuser.vlan_present)
+      $fatal(1, "Unexpected VLAN detected");
 
     $display("✔ Non-VLAN IPv4 frame passed");
 
@@ -203,18 +222,14 @@ module ethernet_frame_parser_tb;
     send_frame();
     wait_for_metadata();
 
-    if (!m_axis_tuser.vlan_present) begin
-      $display("ERROR: VLAN not detected");
-      $finish(1);
-    end
-    if (m_axis_tuser.vlan_id != 12'd5) begin
-      $display("ERROR: VLAN ID mismatch");
-      $finish(1);
-    end
-    if (!m_axis_tuser.is_ipv4) begin
-      $display("ERROR: IPv4 not detected in VLAN frame");
-      $finish(1);
-    end
+    if (!m_axis_tuser.vlan_present)
+      $fatal(1, "VLAN not detected");
+
+    if (m_axis_tuser.vlan_id != 12'd5)
+      $fatal(1, "VLAN ID mismatch");
+
+    if (!m_axis_tuser.is_ipv4)
+      $fatal(1, "IPv4 not detected in VLAN frame");
 
     $display("✔ VLAN IPv4 frame passed");
 
