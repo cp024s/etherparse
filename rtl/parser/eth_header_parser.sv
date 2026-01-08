@@ -1,76 +1,66 @@
 // ============================================================
 // Module: eth_header_parser
-// Purpose: Decode Ethernet L2 header fields from captured bytes
+// Purpose: Parse Ethernet L2 header fields
 // ============================================================
 
 `timescale 1ns/1ps
+import eth_parser_pkg::*;
 
-module eth_header_parser #(
-  parameter int L2_HEADER_MAX_BYTES = 18
-)(
-  input  logic clk,
-  input  logic rst_n,
+module eth_header_parser (
+  input  logic       clk,
+  input  logic       rst_n,
 
-  // Input from header shift register
-  input  logic [L2_HEADER_MAX_BYTES*8-1:0] header_bytes,
-  input  logic                             header_valid,
+  // Header input
+  input  logic [18*8-1:0] header_bytes,
+  input  logic            header_valid,
 
-  // Decoded outputs
-  output logic [47:0] dest_mac,
-  output logic [47:0] src_mac,
-  output logic [15:0] ethertype_raw,
+  // Parsed outputs
+  output mac_addr_t   dest_mac,
+  output mac_addr_t   src_mac,
+  output ethertype_t  ethertype_raw,
   output logic        fields_valid
 );
 
   // ----------------------------------------------------------
-  // Header field extraction
+  // Parse + latch logic
   // ----------------------------------------------------------
-  //
-  // Ethernet fields are big-endian on the wire.
-  // header_bytes[7:0]   = byte 0
-  // header_bytes[15:8]  = byte 1
-  // ...
-  //
-
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      dest_mac     <= '0;
-      src_mac      <= '0;
-      ethertype_raw<= '0;
-      fields_valid <= 1'b0;
+      dest_mac      <= '0;
+      src_mac       <= '0;
+      ethertype_raw <= '0;
+      fields_valid  <= 1'b0;
     end
     else if (header_valid && !fields_valid) begin
-      // Destination MAC: bytes 0-5
+      // Ethernet header layout:
+      // Bytes  0–5  : Destination MAC
+      // Bytes  6–11 : Source MAC
+      // Bytes 12–13 : EtherType
+
       dest_mac <= {
-        header_bytes[  7:0],
-        header_bytes[ 15:8],
-        header_bytes[ 23:16],
-        header_bytes[ 31:24],
-        header_bytes[ 39:32],
-        header_bytes[ 47:40]
+        header_bytes[0*8 +: 8],
+        header_bytes[1*8 +: 8],
+        header_bytes[2*8 +: 8],
+        header_bytes[3*8 +: 8],
+        header_bytes[4*8 +: 8],
+        header_bytes[5*8 +: 8]
       };
 
-      // Source MAC: bytes 6-11
       src_mac <= {
-        header_bytes[ 55:48],
-        header_bytes[ 63:56],
-        header_bytes[ 71:64],
-        header_bytes[ 79:72],
-        header_bytes[ 87:80],
-        header_bytes[ 95:88]
+        header_bytes[6*8 +: 8],
+        header_bytes[7*8 +: 8],
+        header_bytes[8*8 +: 8],
+        header_bytes[9*8 +: 8],
+        header_bytes[10*8 +: 8],
+        header_bytes[11*8 +: 8]
       };
 
-      // EtherType / TPID: bytes 12-13
       ethertype_raw <= {
-        header_bytes[103:96],
-        header_bytes[111:104]
+        header_bytes[12*8 +: 8],
+        header_bytes[13*8 +: 8]
       };
 
       fields_valid <= 1'b1;
-    end
-    else if (!header_valid) begin
-      // Clear valid when header capture resets
-      fields_valid <= 1'b0;
     end
   end
 
