@@ -1,6 +1,6 @@
 // ============================================================
 // Module: header_shift_register
-// Purpose: Capture Ethernet L2 header bytes sequentially
+// Purpose: Robust Ethernet L2 header capture (byte-accurate)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -15,7 +15,6 @@ module header_shift_register #(
   // Control
   input  logic beat_accept,
   input  logic frame_start,
-  input  logic in_l2_header,
 
   // AXI data
   input  logic [DATA_WIDTH-1:0] axis_tdata,
@@ -25,44 +24,39 @@ module header_shift_register #(
   output logic                            header_valid
 );
 
-  // ----------------------------------------------------------
-  // Local parameters
-  // ----------------------------------------------------------
   localparam int BYTES_PER_BEAT = DATA_WIDTH / 8;
 
-  // ----------------------------------------------------------
-  // Internal state
-  // ----------------------------------------------------------
   integer i;
   logic [$clog2(L2_HEADER_MAX_BYTES+1)-1:0] hdr_byte_idx;
 
-  // ----------------------------------------------------------
-  // Header capture logic
-  // ----------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      header_bytes  <= '0;
-      hdr_byte_idx  <= '0;
-      header_valid  <= 1'b0;
+      header_bytes <= '0;
+      hdr_byte_idx <= '0;
+      header_valid <= 1'b0;
     end
     else if (frame_start) begin
-      // Reset for new frame
-      header_bytes  <= '0;
-      hdr_byte_idx  <= '0;
-      header_valid  <= 1'b0;
+      header_bytes <= '0;
+      hdr_byte_idx <= '0;
+      header_valid <= 1'b0;
     end
-    else if (beat_accept && in_l2_header && !header_valid) begin
-      // Capture bytes from this beat
-      for (i = 0; i < BYTES_PER_BEAT; i = i + 1) begin
-        if (hdr_byte_idx < L2_HEADER_MAX_BYTES) begin
-          header_bytes[hdr_byte_idx*8 +: 8] <= axis_tdata[i*8 +: 8];
-          hdr_byte_idx <= hdr_byte_idx + 1;
+    else if (beat_accept && !header_valid) begin
+      // Capture bytes sequentially
+      for (i = 0; i < BYTES_PER_BEAT; i++) begin
+        if (hdr_byte_idx + i < L2_HEADER_MAX_BYTES) begin
+          header_bytes[(hdr_byte_idx + i)*8 +: 8]
+            <= axis_tdata[i*8 +: 8];
         end
       end
 
-      // Mark header complete when buffer is full
-      if (hdr_byte_idx + BYTES_PER_BEAT >= L2_HEADER_MAX_BYTES)
+      // Advance byte index
+      if (hdr_byte_idx + BYTES_PER_BEAT >= L2_HEADER_MAX_BYTES) begin
+        hdr_byte_idx <= L2_HEADER_MAX_BYTES;
         header_valid <= 1'b1;
+      end
+      else begin
+        hdr_byte_idx <= hdr_byte_idx + BYTES_PER_BEAT;
+      end
     end
   end
 
