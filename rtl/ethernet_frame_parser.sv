@@ -13,7 +13,7 @@ module ethernet_frame_parser #(
   input  logic                   rst_n,
 
   // AXI4-Stream input
-  input  logic [DATA_WIDTH-1:0]  s_axis_tdata,
+  input  logic [DATA_WIDTH-1:0]  s_axis_tdata,  
   input  logic                   s_axis_tvalid,
   output logic                   s_axis_tready,
   input  logic                   s_axis_tlast,
@@ -241,8 +241,6 @@ module ethernet_frame_parser #(
     .metadata_valid_in (metadata_valid),
     .metadata_out      (m_axis_tuser),
     .metadata_valid_out(m_axis_tuser_valid),
-    .beat_accept       (beat_accept),
-    .frame_end         (frame_end)
   );
 
 endmodule
