@@ -50,7 +50,6 @@ module ethernet_frame_parser #(
   // Byte counter signals
   // ----------------------------------------------------------
   logic [$clog2(18+DATA_WIDTH/8+1)-1:0] byte_count;
-  logic in_l2_header;
   logic header_done;
 
   // ----------------------------------------------------------
@@ -108,19 +107,18 @@ module ethernet_frame_parser #(
   );
 
   // ==========================================================
-  // Byte counter (SOURCE OF TRUTH)
+  // Byte counter (authoritative header_done source)
   // ==========================================================
   byte_counter #(
     .DATA_WIDTH(DATA_WIDTH)
   ) u_byte_counter (
-    .clk          (clk),
-    .rst_n        (rst_n),
-    .beat_accept  (beat_accept),
-    .frame_start  (frame_start),
-    .frame_end    (frame_end),
-    .byte_count   (byte_count),
-    .in_l2_header (in_l2_header),
-    .header_done  (header_done)
+    .clk         (clk),
+    .rst_n       (rst_n),
+    .beat_accept (beat_accept),
+    .frame_start (frame_start),
+    .frame_end   (frame_end),
+    .byte_count  (byte_count),
+    .header_done (header_done)
   );
 
   // ==========================================================
@@ -139,7 +137,7 @@ module ethernet_frame_parser #(
   );
 
   // ==========================================================
-  // Header shift register
+  // Header shift register (BYTE-ACCURATE, NO in_l2_header)
   // ==========================================================
   header_shift_register #(
     .DATA_WIDTH(DATA_WIDTH)
@@ -148,7 +146,6 @@ module ethernet_frame_parser #(
     .rst_n        (rst_n),
     .beat_accept  (beat_accept),
     .frame_start  (frame_start),
-    .in_l2_header (in_l2_header),
     .axis_tdata   (axis_tdata),
     .header_bytes (header_bytes),
     .header_valid (header_valid)
@@ -188,15 +185,15 @@ module ethernet_frame_parser #(
   // Protocol classifier
   // ==========================================================
   protocol_classifier u_proto (
-    .clk               (clk),
-    .rst_n             (rst_n),
-    .vlan_valid        (vlan_valid),
-    .resolved_ethertype(resolved_ethertype),
-    .is_ipv4           (is_ipv4),
-    .is_ipv6           (is_ipv6),
-    .is_arp            (is_arp),
-    .is_unknown        (is_unknown),
-    .proto_valid       (proto_valid)
+    .clk                (clk),
+    .rst_n              (rst_n),
+    .vlan_valid         (vlan_valid),
+    .resolved_ethertype (resolved_ethertype),
+    .is_ipv4            (is_ipv4),
+    .is_ipv6            (is_ipv6),
+    .is_arp             (is_arp),
+    .is_unknown         (is_unknown),
+    .proto_valid        (proto_valid)
   );
 
   // ==========================================================
