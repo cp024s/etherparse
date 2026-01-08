@@ -4,7 +4,6 @@
 // ============================================================
 
 `timescale 1ns/1ps
-
 import eth_parser_pkg::*;
 
 module ethernet_frame_parser #(
@@ -33,7 +32,6 @@ module ethernet_frame_parser #(
   // ----------------------------------------------------------
   // Internal AXI signals
   // ----------------------------------------------------------
-
   logic [DATA_WIDTH-1:0] axis_tdata;
   logic                  axis_tvalid;
   logic                  axis_tready;
@@ -43,30 +41,27 @@ module ethernet_frame_parser #(
   // ----------------------------------------------------------
   // Frame control signals
   // ----------------------------------------------------------
-
   logic frame_start;
   logic frame_end;
   logic in_header;
   logic in_payload;
 
   // ----------------------------------------------------------
-  // Byte counter
+  // Byte counter signals
   // ----------------------------------------------------------
-
   logic [$clog2(18+DATA_WIDTH/8+1)-1:0] byte_count;
   logic in_l2_header;
+  logic header_done;
 
   // ----------------------------------------------------------
   // Header capture
   // ----------------------------------------------------------
-
   logic [18*8-1:0] header_bytes;
   logic            header_valid;
 
   // ----------------------------------------------------------
   // Ethernet header parsing
   // ----------------------------------------------------------
-
   mac_addr_t   dest_mac;
   mac_addr_t   src_mac;
   ethertype_t ethertype_raw;
@@ -75,7 +70,6 @@ module ethernet_frame_parser #(
   // ----------------------------------------------------------
   // VLAN resolution
   // ----------------------------------------------------------
-
   logic        vlan_present;
   logic [11:0] vlan_id;
   ethertype_t resolved_ethertype;
@@ -85,21 +79,18 @@ module ethernet_frame_parser #(
   // ----------------------------------------------------------
   // Protocol classification
   // ----------------------------------------------------------
-
   logic is_ipv4, is_ipv6, is_arp, is_unknown;
   logic proto_valid;
 
   // ----------------------------------------------------------
   // Metadata
   // ----------------------------------------------------------
-
   eth_metadata_t metadata;
   logic          metadata_valid;
 
   // ==========================================================
   // AXI ingress
   // ==========================================================
-
   axis_ingress #(
     .DATA_WIDTH(DATA_WIDTH)
   ) u_axis_ingress (
@@ -117,26 +108,8 @@ module ethernet_frame_parser #(
   );
 
   // ==========================================================
-  // Frame control FSM
+  // Byte counter (SOURCE OF TRUTH)
   // ==========================================================
-
-  frame_control_fsm u_frame_ctrl (
-    .clk         (clk),
-    .rst_n       (rst_n),
-    .beat_accept (beat_accept),
-    .tlast       (axis_tlast),
-    .byte_count  (byte_count),
-    .frame_start (frame_start),
-    .frame_end   (frame_end),
-    .in_header   (in_header),
-    .in_payload  (in_payload),
-    .header_done ()
-  );
-
-  // ==========================================================
-  // Byte counter
-  // ==========================================================
-
   byte_counter #(
     .DATA_WIDTH(DATA_WIDTH)
   ) u_byte_counter (
@@ -146,13 +119,28 @@ module ethernet_frame_parser #(
     .frame_start  (frame_start),
     .frame_end    (frame_end),
     .byte_count   (byte_count),
-    .in_l2_header (in_l2_header)
+    .in_l2_header (in_l2_header),
+    .header_done  (header_done)
+  );
+
+  // ==========================================================
+  // Frame control FSM
+  // ==========================================================
+  frame_control_fsm u_frame_ctrl (
+    .clk         (clk),
+    .rst_n       (rst_n),
+    .beat_accept (beat_accept),
+    .tlast       (axis_tlast),
+    .header_done (header_done),
+    .frame_start (frame_start),
+    .frame_end   (frame_end),
+    .in_header   (in_header),
+    .in_payload  (in_payload)
   );
 
   // ==========================================================
   // Header shift register
   // ==========================================================
-
   header_shift_register #(
     .DATA_WIDTH(DATA_WIDTH)
   ) u_hdr_shift (
@@ -169,7 +157,6 @@ module ethernet_frame_parser #(
   // ==========================================================
   // Ethernet header parser
   // ==========================================================
-
   eth_header_parser u_eth_hdr (
     .clk           (clk),
     .rst_n         (rst_n),
@@ -184,7 +171,6 @@ module ethernet_frame_parser #(
   // ==========================================================
   // VLAN resolver
   // ==========================================================
-
   vlan_resolver u_vlan (
     .clk               (clk),
     .rst_n             (rst_n),
@@ -201,49 +187,46 @@ module ethernet_frame_parser #(
   // ==========================================================
   // Protocol classifier
   // ==========================================================
-
   protocol_classifier u_proto (
-    .clk              (clk),
-    .rst_n            (rst_n),
-    .vlan_valid       (vlan_valid),
+    .clk               (clk),
+    .rst_n             (rst_n),
+    .vlan_valid        (vlan_valid),
     .resolved_ethertype(resolved_ethertype),
-    .is_ipv4          (is_ipv4),
-    .is_ipv6          (is_ipv6),
-    .is_arp           (is_arp),
-    .is_unknown       (is_unknown),
-    .proto_valid      (proto_valid)
+    .is_ipv4           (is_ipv4),
+    .is_ipv6           (is_ipv6),
+    .is_arp            (is_arp),
+    .is_unknown        (is_unknown),
+    .proto_valid       (proto_valid)
   );
 
   // ==========================================================
   // Metadata packager
   // ==========================================================
-
   metadata_packager u_metadata (
-    .clk             (clk),
-    .rst_n           (rst_n),
-    .frame_start     (frame_start),
-    .frame_end       (frame_end),
-    .fields_valid    (fields_valid),
-    .dest_mac        (dest_mac),
-    .src_mac         (src_mac),
-    .vlan_valid      (vlan_valid),
-    .vlan_present    (vlan_present),
-    .vlan_id         (vlan_id),
+    .clk               (clk),
+    .rst_n             (rst_n),
+    .frame_start       (frame_start),
+    .frame_end         (frame_end),
+    .fields_valid      (fields_valid),
+    .dest_mac          (dest_mac),
+    .src_mac           (src_mac),
+    .vlan_valid        (vlan_valid),
+    .vlan_present      (vlan_present),
+    .vlan_id           (vlan_id),
     .resolved_ethertype(resolved_ethertype),
-    .l2_header_len   (l2_header_len),
-    .proto_valid     (proto_valid),
-    .is_ipv4         (is_ipv4),
-    .is_ipv6         (is_ipv6),
-    .is_arp          (is_arp),
-    .is_unknown      (is_unknown),
-    .metadata        (metadata),
-    .metadata_valid  (metadata_valid)
+    .l2_header_len     (l2_header_len),
+    .proto_valid       (proto_valid),
+    .is_ipv4           (is_ipv4),
+    .is_ipv6           (is_ipv6),
+    .is_arp            (is_arp),
+    .is_unknown        (is_unknown),
+    .metadata          (metadata),
+    .metadata_valid    (metadata_valid)
   );
 
   // ==========================================================
   // AXI egress
   // ==========================================================
-
   axis_egress #(
     .DATA_WIDTH(DATA_WIDTH)
   ) u_axis_egress (
