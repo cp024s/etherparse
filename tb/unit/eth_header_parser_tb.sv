@@ -1,6 +1,6 @@
 // ============================================================
 // Testbench: eth_header_parser_tb
-// Purpose  : Unit test for Ethernet header parsing
+// Purpose  : Unit test for Ethernet header parsing (CORRECT)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -34,14 +34,14 @@ module eth_header_parser_tb;
   // DUT
   // ----------------------------------------------------------
   eth_header_parser dut (
-    .clk           (clk),
-    .rst_n         (rst_n),
-    .header_bytes  (header_bytes),
-    .header_valid  (header_valid),
-    .dest_mac      (dest_mac),
-    .src_mac       (src_mac),
-    .ethertype_raw(ethertype_raw),
-    .fields_valid  (fields_valid)
+    .clk            (clk),
+    .rst_n          (rst_n),
+    .header_bytes   (header_bytes),
+    .header_valid   (header_valid),
+    .dest_mac       (dest_mac),
+    .src_mac        (src_mac),
+    .ethertype_raw  (ethertype_raw),
+    .fields_valid   (fields_valid)
   );
 
   // ----------------------------------------------------------
@@ -57,41 +57,43 @@ module eth_header_parser_tb;
     rst_n = 1;
 
     // ======================================================
-    // TEST 1: Basic Ethernet II header (IPv4)
+    // TEST 1: Ethernet II IPv4 header
     // ======================================================
     $display("=== eth_header_parser TEST 1: IPv4 ===");
 
-    /*
-      Ethernet header layout:
-      [0:5]   Destination MAC
-      [6:11]  Source MAC
-      [12:13] Ethertype
-    */
+    // --------------------------------------------------
+    // Drive HEADER DATA FIRST (MSB aligned)
+    // --------------------------------------------------
+    header_bytes = '0;
 
-// Clear first
-header_bytes = '0;
+    // Destination MAC FF:FF:FF:FF:FF:FF
+    header_bytes[143 -: 8] = 8'hFF;
+    header_bytes[135 -: 8] = 8'hFF;
+    header_bytes[127 -: 8] = 8'hFF;
+    header_bytes[119 -: 8] = 8'hFF;
+    header_bytes[111 -: 8] = 8'hFF;
+    header_bytes[103 -: 8] = 8'hFF;
 
-// Byte 0 = MSB = bit [143:136]
-header_bytes[143 -: 8] = 8'hFF;
-header_bytes[135 -: 8] = 8'hFF;
-header_bytes[127 -: 8] = 8'hFF;
-header_bytes[119 -: 8] = 8'hFF;
-header_bytes[111 -: 8] = 8'hFF;
-header_bytes[103 -: 8] = 8'hFF;
+    // Source MAC 00:11:22:33:44:55
+    header_bytes[95  -: 8] = 8'h00;
+    header_bytes[87  -: 8] = 8'h11;
+    header_bytes[79  -: 8] = 8'h22;
+    header_bytes[71  -: 8] = 8'h33;
+    header_bytes[63  -: 8] = 8'h44;
+    header_bytes[55  -: 8] = 8'h55;
 
-// Src MAC
-header_bytes[95  -: 8] = 8'h00;
-header_bytes[87  -: 8] = 8'h11;
-header_bytes[79  -: 8] = 8'h22;
-header_bytes[71  -: 8] = 8'h33;
-header_bytes[63  -: 8] = 8'h44;
-header_bytes[55  -: 8] = 8'h55;
+    // Ethertype = IPv4 (0x0800)
+    header_bytes[47  -: 8] = 8'h08;
+    header_bytes[39  -: 8] = 8'h00;
 
-// Ethertype = IPv4
-header_bytes[47  -: 8] = 8'h08;
-header_bytes[39  -: 8] = 8'h00;
+    // --------------------------------------------------
+    // LET DATA STABILIZE
+    // --------------------------------------------------
+    @(posedge clk);
 
-
+    // --------------------------------------------------
+    // Assert VALID on NEXT cycle
+    // --------------------------------------------------
     header_valid = 1'b1;
     @(posedge clk);
     header_valid = 1'b0;
@@ -99,7 +101,7 @@ header_bytes[39  -: 8] = 8'h00;
     @(posedge clk);
 
     // --------------------------------------------------
-    // Checks
+    // CHECKS
     // --------------------------------------------------
     if (!fields_valid)
       $fatal(1, "FAIL: fields_valid not asserted");
