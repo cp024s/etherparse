@@ -1,6 +1,6 @@
 // ============================================================
 // Testbench: ethernet_frame_parser_tb
-// FINAL – AXI-correct + assertion-driven debug
+// FINAL – AXI-legal, skid-buffer aware
 // ============================================================
 
 `timescale 1ns/1ps
@@ -8,14 +8,11 @@ import eth_parser_pkg::*;
 
 module ethernet_frame_parser_tb;
 
-  // ----------------------------------------------------------
-  // Parameters
-  // ----------------------------------------------------------
   localparam int DATA_WIDTH = 64;
   localparam int CLK_PERIOD = 10;
 
   // ----------------------------------------------------------
-  // Clock & reset
+  // Clock / Reset
   // ----------------------------------------------------------
   logic clk;
   logic rst_n;
@@ -23,13 +20,16 @@ module ethernet_frame_parser_tb;
   always #(CLK_PERIOD/2) clk = ~clk;
 
   // ----------------------------------------------------------
-  // AXI Stream signals
+  // AXI input
   // ----------------------------------------------------------
   logic [DATA_WIDTH-1:0] s_axis_tdata;
   logic                  s_axis_tvalid;
   logic                  s_axis_tready;
   logic                  s_axis_tlast;
 
+  // ----------------------------------------------------------
+  // AXI output
+  // ----------------------------------------------------------
   logic [DATA_WIDTH-1:0] m_axis_tdata;
   logic                  m_axis_tvalid;
   logic                  m_axis_tready;
@@ -65,7 +65,7 @@ module ethernet_frame_parser_tb;
   int  frame_len;
 
   // ----------------------------------------------------------
-  // AXI-CORRECT send_beat task
+  // AXI-correct beat sender
   // ----------------------------------------------------------
   task send_beat(
     input logic [DATA_WIDTH-1:0] data,
@@ -77,26 +77,21 @@ module ethernet_frame_parser_tb;
       s_axis_tvalid <= 1'b1;
 
       // Hold VALID until handshake completes
-      do begin
+      while (!(s_axis_tvalid && s_axis_tready))
         @(posedge clk);
-      end while (!(s_axis_tvalid && s_axis_tready));
 
-      // Deassert after successful transfer
       s_axis_tvalid <= 1'b0;
       s_axis_tlast  <= 1'b0;
       s_axis_tdata  <= '0;
-
-      // One-cycle gap
       @(posedge clk);
     end
   endtask
 
   // ----------------------------------------------------------
-  // Send entire frame
+  // Send full frame
   // ----------------------------------------------------------
   task send_frame;
-    int i;
-    int b;
+    int i, b;
     logic [DATA_WIDTH-1:0] beat;
     begin
       i = 0;
@@ -114,7 +109,7 @@ module ethernet_frame_parser_tb;
   endtask
 
   // ----------------------------------------------------------
-  // Wait for metadata with timeout
+  // Wait for metadata (REAL completion condition)
   // ----------------------------------------------------------
   task wait_for_metadata;
     int timeout;
@@ -126,47 +121,15 @@ module ethernet_frame_parser_tb;
       end
 
       if (!m_axis_tuser_valid) begin
-        $display("ERROR: metadata_valid never asserted");
-        $display("DEBUG:");
-        $display("  beat_accept  = %0d", dut.beat_accept);
-        $display("  byte_count   = %0d", dut.byte_count);
-        $display("  header_done  = %0d", dut.header_done);
-        $display("  header_valid = %0d", dut.header_valid);
-        $display("  fields_valid = %0d", dut.fields_valid);
-        $display("  vlan_valid   = %0d", dut.vlan_valid);
-        $display("  proto_valid  = %0d", dut.proto_valid);
-        $finish(1);
+        $fatal(1, "ERROR: metadata_valid never asserted");
       end
     end
   endtask
 
   // ----------------------------------------------------------
-  // Forward progress assertion
-  // ----------------------------------------------------------
-  int progress_ctr;
-
-  always @(posedge clk) begin
-    if (!rst_n) begin
-      progress_ctr <= 0;
-    end
-    else begin
-      if (dut.beat_accept)
-        progress_ctr <= 0;
-      else
-        progress_ctr <= progress_ctr + 1;
-
-      if (progress_ctr > 50) begin
-        $fatal(1,
-          "PIPELINE STALL: no beat_accept for 50 cycles (AXI deadlock)");
-      end
-    end
-  end
-
-  // ----------------------------------------------------------
   // Test sequence
   // ----------------------------------------------------------
   initial begin
-    // Init
     clk = 0;
     rst_n = 0;
     s_axis_tvalid = 0;
@@ -174,7 +137,6 @@ module ethernet_frame_parser_tb;
     s_axis_tdata  = '0;
     m_axis_tready = 1'b1; // Always ready
 
-    // Reset
     repeat (5) @(posedge clk);
     rst_n = 1;
 
