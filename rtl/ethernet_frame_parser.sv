@@ -194,8 +194,8 @@ module ethernet_frame_parser #(
   metadata_packager u_metadata (
     .clk                (clk),
     .rst_n              (rst_n),
-    .frame_start        (frame_start),
-    .frame_end          (frame_end),
+  //  .frame_start        (frame_start),
+  //  .frame_end          (frame_end),
     .fields_valid       (fields_valid),
     .dest_mac           (dest_mac),
     .src_mac            (src_mac),
