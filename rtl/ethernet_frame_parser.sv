@@ -241,6 +241,7 @@ module ethernet_frame_parser #(
     .metadata_valid_in (metadata_valid),
     .metadata_out      (m_axis_tuser),
     .metadata_valid_out(m_axis_tuser_valid),
+
   );
 
 endmodule
