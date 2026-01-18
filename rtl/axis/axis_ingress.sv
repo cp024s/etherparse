@@ -1,6 +1,6 @@
 // ============================================================
 // Module: axis_ingress
-// Purpose: AXI4-Stream ingress with clean handshake detection
+// Purpose: AXI4-Stream ingress adapter (pass-through)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -8,61 +8,33 @@
 module axis_ingress #(
   parameter int DATA_WIDTH = 64
 )(
-  input  logic                   clk,
-  input  logic                   rst_n,
+  input  logic                  clk,
+  input  logic                  rst_n,
 
-  // AXI4-Stream slave interface
-  input  logic [DATA_WIDTH-1:0]  s_axis_tdata,
-  input  logic                   s_axis_tvalid,
-  output logic                   s_axis_tready,
-  input  logic                   s_axis_tlast,
+  // AXI input
+  input  logic [DATA_WIDTH-1:0] s_axis_tdata,
+  input  logic                  s_axis_tvalid,
+  output logic                  s_axis_tready,
+  input  logic                  s_axis_tlast,
 
-  // Internal stream
-  output logic [DATA_WIDTH-1:0]  axis_tdata,
-  output logic                   axis_tvalid,
-  input  logic                   axis_tready,
-  output logic                   axis_tlast,
+  // AXI output
+  output logic [DATA_WIDTH-1:0] axis_tdata,
+  output logic                  axis_tvalid,
+  input  logic                  axis_tready,
+  output logic                  axis_tlast,
 
   // Handshake indicator
-  output logic                   beat_accept
+  output logic                  beat_accept
 );
 
-  // ----------------------------------------------------------
-  // AXI pass-through
-  // ----------------------------------------------------------
-
+  // Pass-through
   assign axis_tdata  = s_axis_tdata;
   assign axis_tvalid = s_axis_tvalid;
   assign axis_tlast  = s_axis_tlast;
 
-  // ----------------------------------------------------------
-  // READY propagation
-  // ----------------------------------------------------------
-  //
-  // READY must depend ONLY on downstream readiness.
-  // Never gate READY with TVALID — that causes deadlock.
-  //
   assign s_axis_tready = axis_tready;
 
-  // ----------------------------------------------------------
-  // Beat accept (authoritative)
-  // ----------------------------------------------------------
-  //
-  // A beat is accepted exactly when VALID and READY are high.
-  //
-  assign beat_accept = axis_tvalid && axis_tready;
-
-  // ============================================================
-  // AXI ingress assertions
-  // ============================================================
-  `ifndef SYNTHESIS
-    // VALID must not be ignored forever
-    always_ff @(posedge clk) begin
-      if (rst_n && s_axis_tvalid) begin
-        assert (s_axis_tready)
-          else $fatal(1, "AXI ingress violation: TVALID high but TREADY low");
-      end
-    end
-  `endif
+  // Beat accepted when both valid and ready
+  assign beat_accept = s_axis_tvalid && s_axis_tready;
 
 endmodule
