@@ -1,6 +1,6 @@
 // ============================================================
 // Testbench: eth_header_parser_tb
-// Purpose  : Unit test for Ethernet header parsing (CORRECT)
+// Purpose  : Unit test for Ethernet header parsing (BYTE ARRAY)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -8,101 +8,54 @@ import eth_parser_pkg::*;
 
 module eth_header_parser_tb;
 
-  // ----------------------------------------------------------
-  // Clock / Reset
-  // ----------------------------------------------------------
-  logic clk;
-  logic rst_n;
+  byte_t header_bytes [0:17];
+  logic  header_valid;
 
-  always #5 clk = ~clk;
-
-  // ----------------------------------------------------------
-  // DUT inputs
-  // ----------------------------------------------------------
-  logic [18*8-1:0] header_bytes;
-  logic            header_valid;
-
-  // ----------------------------------------------------------
-  // DUT outputs
-  // ----------------------------------------------------------
   mac_addr_t   dest_mac;
   mac_addr_t   src_mac;
   ethertype_t  ethertype_raw;
   logic        fields_valid;
 
-  // ----------------------------------------------------------
-  // DUT
-  // ----------------------------------------------------------
   eth_header_parser dut (
-    .clk            (clk),
-    .rst_n          (rst_n),
-    .header_bytes   (header_bytes),
-    .header_valid   (header_valid),
-    .dest_mac       (dest_mac),
-    .src_mac        (src_mac),
-    .ethertype_raw  (ethertype_raw),
-    .fields_valid   (fields_valid)
+    .header_bytes (header_bytes),
+    .header_valid (header_valid),
+    .dest_mac     (dest_mac),
+    .src_mac      (src_mac),
+    .ethertype_raw(ethertype_raw),
+    .fields_valid (fields_valid)
   );
 
-  // ----------------------------------------------------------
-  // Test sequence
-  // ----------------------------------------------------------
   initial begin
-    clk = 0;
-    rst_n = 0;
     header_valid = 0;
-    header_bytes = '0;
 
-    repeat (3) @(posedge clk);
-    rst_n = 1;
+    // Ethernet II IPv4 header
+    header_bytes[0]  = 8'hFF;
+    header_bytes[1]  = 8'hFF;
+    header_bytes[2]  = 8'hFF;
+    header_bytes[3]  = 8'hFF;
+    header_bytes[4]  = 8'hFF;
+    header_bytes[5]  = 8'hFF;
 
-    // ======================================================
-    // TEST 1: Ethernet II IPv4 header
-    // ======================================================
-    $display("=== eth_header_parser TEST 1: IPv4 ===");
+    header_bytes[6]  = 8'h00;
+    header_bytes[7]  = 8'h11;
+    header_bytes[8]  = 8'h22;
+    header_bytes[9]  = 8'h33;
+    header_bytes[10] = 8'h44;
+    header_bytes[11] = 8'h55;
 
-    // --------------------------------------------------
-    // Drive HEADER DATA FIRST (MSB aligned)
-    // --------------------------------------------------
-    header_bytes = '0;
+    header_bytes[12] = 8'h08;
+    header_bytes[13] = 8'h00;
 
-    // Destination MAC FF:FF:FF:FF:FF:FF
-    header_bytes[143 -: 8] = 8'hFF;
-    header_bytes[135 -: 8] = 8'hFF;
-    header_bytes[127 -: 8] = 8'hFF;
-    header_bytes[119 -: 8] = 8'hFF;
-    header_bytes[111 -: 8] = 8'hFF;
-    header_bytes[103 -: 8] = 8'hFF;
+    header_bytes[14] = 0;
+    header_bytes[15] = 0;
+    header_bytes[16] = 0;
+    header_bytes[17] = 0;
 
-    // Source MAC 00:11:22:33:44:55
-    header_bytes[95  -: 8] = 8'h00;
-    header_bytes[87  -: 8] = 8'h11;
-    header_bytes[79  -: 8] = 8'h22;
-    header_bytes[71  -: 8] = 8'h33;
-    header_bytes[63  -: 8] = 8'h44;
-    header_bytes[55  -: 8] = 8'h55;
+    #1;
+    header_valid = 1;
+    #1;
+    header_valid = 0;
 
-    // Ethertype = IPv4 (0x0800)
-    header_bytes[47  -: 8] = 8'h08;
-    header_bytes[39  -: 8] = 8'h00;
-
-    // --------------------------------------------------
-    // LET DATA STABILIZE
-    // --------------------------------------------------
-    @(posedge clk);
-
-    // --------------------------------------------------
-    // Assert VALID on NEXT cycle
-    // --------------------------------------------------
-    header_valid = 1'b1;
-    @(posedge clk);
-    header_valid = 1'b0;
-
-    @(posedge clk);
-
-    // --------------------------------------------------
-    // CHECKS
-    // --------------------------------------------------
     if (!fields_valid)
       $fatal(1, "FAIL: fields_valid not asserted");
 
@@ -115,13 +68,7 @@ module eth_header_parser_tb;
     if (ethertype_raw !== 16'h0800)
       $fatal(1, "FAIL: ethertype incorrect: %h", ethertype_raw);
 
-    $display("✔ TEST 1 PASSED");
-
-    // ======================================================
-    // DONE
-    // ======================================================
-    $display("=== eth_header_parser ALL TESTS PASSED ===");
-    #20;
+    $display("✔ eth_header_parser unit test PASSED");
     $finish;
   end
 

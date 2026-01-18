@@ -1,16 +1,13 @@
 // ============================================================
 // Module: eth_header_parser
-// Purpose: Parse Ethernet II header fields (BYTE-EXPLICIT)
+// Purpose: Parse Ethernet II header fields (BYTE ARRAY SAFE)
 // ============================================================
 
 `timescale 1ns/1ps
 import eth_parser_pkg::*;
 
 module eth_header_parser (
-  input  logic           clk,
-  input  logic           rst_n,
-
-  input  logic [18*8-1:0] header_bytes,
+  input  byte_t          header_bytes [0:17], // byte 0 = dest[47:40]
   input  logic           header_valid,
 
   output mac_addr_t      dest_mac,
@@ -19,56 +16,37 @@ module eth_header_parser (
   output logic           fields_valid
 );
 
-  // ----------------------------------------------------------
-  // Byte extraction helper
-  // Byte 0 = MSB of header_bytes
-  // ----------------------------------------------------------
-  function automatic logic [7:0] get_byte(input int idx);
-    int bit_pos;
-    begin
-      bit_pos = (18 - idx) * 8 - 1;
-      get_byte = header_bytes[bit_pos -: 8];
-    end
-  endfunction
+  always_comb begin
+    dest_mac      = '0;
+    src_mac       = '0;
+    ethertype_raw = '0;
+    fields_valid  = 1'b0;
 
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      dest_mac      <= '0;
-      src_mac       <= '0;
-      ethertype_raw <= '0;
-      fields_valid  <= 1'b0;
-    end
-    else if (header_valid) begin
-      // Destination MAC (bytes 0..5)
-      dest_mac <= {
-        get_byte(0),
-        get_byte(1),
-        get_byte(2),
-        get_byte(3),
-        get_byte(4),
-        get_byte(5)
+    if (header_valid) begin
+      dest_mac = {
+        header_bytes[0],
+        header_bytes[1],
+        header_bytes[2],
+        header_bytes[3],
+        header_bytes[4],
+        header_bytes[5]
       };
 
-      // Source MAC (bytes 6..11)
-      src_mac <= {
-        get_byte(6),
-        get_byte(7),
-        get_byte(8),
-        get_byte(9),
-        get_byte(10),
-        get_byte(11)
+      src_mac = {
+        header_bytes[6],
+        header_bytes[7],
+        header_bytes[8],
+        header_bytes[9],
+        header_bytes[10],
+        header_bytes[11]
       };
 
-      // Ethertype (bytes 12..13)
-      ethertype_raw <= {
-        get_byte(12),
-        get_byte(13)
+      ethertype_raw = {
+        header_bytes[12],
+        header_bytes[13]
       };
 
-      fields_valid <= 1'b1;
-    end
-    else begin
-      fields_valid <= 1'b0;
+      fields_valid = 1'b1;
     end
   end
 
