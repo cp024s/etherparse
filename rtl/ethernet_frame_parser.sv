@@ -1,6 +1,6 @@
 // ============================================================
 // Module: ethernet_frame_parser
-// Purpose: Top-level Ethernet frame parser (forced working baseline)
+// Purpose: Top-level Ethernet frame parsing and metadata tagging
 // ============================================================
 
 `timescale 1ns/1ps
@@ -9,142 +9,172 @@ import eth_parser_pkg::*;
 module ethernet_frame_parser #(
   parameter int DATA_WIDTH = 64
 )(
-  input  logic                   clk,
-  input  logic                   rst_n,
+  input  logic                  clk,
+  input  logic                  rst_n,
 
   // AXI4-Stream input
-  input  logic [DATA_WIDTH-1:0]  s_axis_tdata,
-  input  logic                   s_axis_tvalid,
-  output logic                   s_axis_tready,
-  input  logic                   s_axis_tlast,
+  input  logic [DATA_WIDTH-1:0] s_axis_tdata,
+  input  logic                  s_axis_tvalid,
+  output logic                  s_axis_tready,
+  input  logic                  s_axis_tlast,
 
   // AXI4-Stream output
-  output logic [DATA_WIDTH-1:0]  m_axis_tdata,
-  output logic                   m_axis_tvalid,
-  input  logic                   m_axis_tready,
-  output logic                   m_axis_tlast,
+  output logic [DATA_WIDTH-1:0] m_axis_tdata,
+  output logic                  m_axis_tvalid,
+  input  logic                  m_axis_tready,
+  output logic                  m_axis_tlast,
 
   // Metadata output
-  output eth_metadata_t          m_axis_tuser,
-  output logic                   m_axis_tuser_valid
+  output eth_metadata_t         m_axis_tuser,
+  output logic                  m_axis_tuser_valid
 );
 
   // ==========================================================
-  // AXI ingress (pure pass-through)
+  // AXI handshake (simple pass-through)
   // ==========================================================
-  logic [DATA_WIDTH-1:0] axis_tdata;
-  logic                  axis_tvalid;
-  logic                  axis_tready_int;
-  logic                  axis_tlast;
-
-  axis_ingress #(
-    .DATA_WIDTH(DATA_WIDTH)
-  ) u_axis_ingress (
-    .clk           (clk),
-    .rst_n         (rst_n),
-    .s_axis_tdata  (s_axis_tdata),
-    .s_axis_tvalid (s_axis_tvalid),
-    .s_axis_tready (s_axis_tready),
-    .s_axis_tlast  (s_axis_tlast),
-    .axis_tdata    (axis_tdata),
-    .axis_tvalid   (axis_tvalid),
-    .axis_tready   (axis_tready_int),
-    .axis_tlast    (axis_tlast)
-  );
-
-  // ==========================================================
-  // AXI skid buffer (1-beat register slice)
-  // ==========================================================
-  logic [DATA_WIDTH-1:0] sb_tdata;
-  logic                  sb_tvalid;
-  logic                  sb_tready;
-  logic                  sb_tlast;
-
-  axis_skid_buffer #(
-    .DATA_WIDTH(DATA_WIDTH)
-  ) u_axis_skid (
-    .clk           (clk),
-    .rst_n         (rst_n),
-    .s_axis_tdata  (axis_tdata),
-    .s_axis_tvalid (axis_tvalid),
-    .s_axis_tready (axis_tready_int),
-    .s_axis_tlast  (axis_tlast),
-    .m_axis_tdata  (sb_tdata),
-    .m_axis_tvalid (sb_tvalid),
-    .m_axis_tready (sb_tready),
-    .m_axis_tlast  (sb_tlast)
-  );
-
-  // Beat accept AFTER skid buffer
   logic beat_accept;
-  assign beat_accept = sb_tvalid && sb_tready;
+
+  assign s_axis_tready = m_axis_tready;
+  assign m_axis_tvalid = s_axis_tvalid;
+  assign m_axis_tdata  = s_axis_tdata;
+  assign m_axis_tlast  = s_axis_tlast;
+
+  assign beat_accept = s_axis_tvalid && s_axis_tready;
 
   // ==========================================================
-  // (Parser logic exists but is effectively bypassed)
+  // Frame control (SINGLE FRAME ONLY, NO FSM)
   // ==========================================================
-  // We keep these signals only to avoid breaking hierarchy.
-  // They are NOT relied on for correctness in this baseline.
+  logic frame_start;
+  logic frame_end;
+  logic in_frame;
 
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      in_frame    <= 1'b0;
+      frame_start <= 1'b0;
+      frame_end   <= 1'b0;
+    end else begin
+      frame_start <= 1'b0;
+      frame_end   <= 1'b0;
+
+      if (beat_accept && !in_frame) begin
+        frame_start <= 1'b1;
+        in_frame    <= 1'b1;
+      end
+
+      if (beat_accept && s_axis_tlast) begin
+        frame_end <= 1'b1;
+        in_frame  <= 1'b0;
+      end
+    end
+  end
+
+  // ==========================================================
+  // Header capture
+  // ==========================================================
+  logic [17:0][7:0] header_bytes;
+  logic             header_valid;
+
+  header_shift_register #(
+    .DATA_WIDTH(DATA_WIDTH)
+  ) u_header_capture (
+    .clk          (clk),
+    .rst_n        (rst_n),
+    .beat_accept  (beat_accept),
+    .frame_start  (frame_start),
+    .axis_tdata   (s_axis_tdata),
+    .header_bytes (header_bytes),
+    .header_valid (header_valid)
+  );
+
+  // ==========================================================
+  // Ethernet header parsing
+  // ==========================================================
   mac_addr_t   dest_mac;
   mac_addr_t   src_mac;
   ethertype_t  ethertype_raw;
   logic        fields_valid;
 
-  assign dest_mac      = 48'hFFFFFFFFFFFF;
-  assign src_mac       = 48'h001122334455;
-  assign ethertype_raw = 16'h0800;
-  assign fields_valid  = 1'b1;
-
-  // ==========================================================
-  // FORCED METADATA (INTERNAL REGISTERS)
-  // ==========================================================
-  eth_metadata_t forced_metadata;
-  logic          forced_metadata_valid;
-
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      forced_metadata_valid <= 1'b0;
-      forced_metadata       <= '0;
-    end
-    else if (beat_accept && !forced_metadata_valid) begin
-      forced_metadata.dest_mac      <= 48'hFFFFFFFFFFFF;
-      forced_metadata.src_mac       <= 48'h001122334455;
-      forced_metadata.vlan_present  <= 1'b0;
-      forced_metadata.vlan_id       <= 12'd0;
-      forced_metadata.ethertype     <= 16'h0800; // IPv4
-      forced_metadata.l2_header_len <= 5'd14;
-      forced_metadata.is_ipv4       <= 1'b1;
-      forced_metadata.is_ipv6       <= 1'b0;
-      forced_metadata.is_arp        <= 1'b0;
-      forced_metadata.is_unknown    <= 1'b0;
-
-      forced_metadata_valid <= 1'b1;
-    end
-  end
-
-  // ==========================================================
-  // AXI egress (metadata override mux)
-  // ==========================================================
-  axis_egress #(
-    .DATA_WIDTH(DATA_WIDTH)
-  ) u_axis_egress (
-    .clk               (clk),
-    .rst_n             (rst_n),
-    .axis_tdata_in     (sb_tdata),
-    .axis_tvalid_in    (sb_tvalid),
-    .axis_tready_in    (sb_tready),
-    .axis_tlast_in     (sb_tlast),
-    .m_axis_tdata      (m_axis_tdata),
-    .m_axis_tvalid     (m_axis_tvalid),
-    .m_axis_tready     (m_axis_tready),
-    .m_axis_tlast      (m_axis_tlast),
-
-    // FORCE metadata here (legal single driver)
-    .metadata_in       (forced_metadata),
-    .metadata_valid_in (forced_metadata_valid),
-
-    .metadata_out      (m_axis_tuser),
-    .metadata_valid_out(m_axis_tuser_valid)
+  eth_header_parser u_eth_hdr (
+    .header_bytes  (header_bytes),
+    .header_valid  (header_valid),
+    .dest_mac      (dest_mac),
+    .src_mac       (src_mac),
+    .ethertype_raw (ethertype_raw),
+    .fields_valid  (fields_valid)
   );
+
+  // ==========================================================
+  // VLAN resolution
+  // ==========================================================
+  logic        vlan_present;
+  logic [11:0] vlan_id;
+  ethertype_t  resolved_ethertype;
+  logic [4:0]  l2_header_len;
+  logic        vlan_valid;
+
+  vlan_resolver u_vlan (
+    .header_bytes       (header_bytes),
+    .ethertype_raw      (ethertype_raw),
+    .fields_valid       (fields_valid),
+    .vlan_present       (vlan_present),
+    .vlan_id            (vlan_id),
+    .resolved_ethertype (resolved_ethertype),
+    .l2_header_len      (l2_header_len),
+    .vlan_valid         (vlan_valid)
+  );
+
+  // ==========================================================
+  // Protocol classification
+  // ==========================================================
+  logic is_ipv4, is_ipv6, is_arp, is_unknown;
+  logic proto_valid;
+
+  protocol_classifier u_proto (
+    .resolved_ethertype (resolved_ethertype),
+    .vlan_valid         (vlan_valid),
+    .is_ipv4            (is_ipv4),
+    .is_ipv6            (is_ipv6),
+    .is_arp             (is_arp),
+    .is_unknown         (is_unknown),
+    .proto_valid        (proto_valid)
+  );
+
+  // ==========================================================
+  // Metadata packaging (FIXED INTERFACE)
+  // ==========================================================
+  logic [47:0] meta_dest_mac;
+
+  metadata_packager u_metadata (
+    .clk                (clk),
+    .rst_n              (rst_n),
+    .frame_start        (frame_start),
+    .frame_end          (frame_end),
+    .dest_mac           (dest_mac),
+    .src_mac            (src_mac),
+    .resolved_ethertype (resolved_ethertype),
+    .vlan_present       (vlan_present),
+    .vlan_id            (vlan_id),
+    .l2_header_len      (l2_header_len),
+    .proto_valid        (proto_valid),
+    .is_ipv4            (is_ipv4),
+    .is_ipv6            (is_ipv6),
+    .is_arp             (is_arp),
+    .is_unknown         (is_unknown),
+    .meta_dest_mac      (meta_dest_mac),
+    .metadata_valid     (m_axis_tuser_valid)
+  );
+
+  // Map to AXI TUSER
+  assign m_axis_tuser.dest_mac   = meta_dest_mac;
+  assign m_axis_tuser.src_mac    = src_mac;
+  assign m_axis_tuser.ethertype  = resolved_ethertype;
+  assign m_axis_tuser.vlan_present = vlan_present;
+  assign m_axis_tuser.vlan_id    = vlan_id;
+  assign m_axis_tuser.l2_header_len = l2_header_len;
+  assign m_axis_tuser.is_ipv4    = is_ipv4;
+  assign m_axis_tuser.is_ipv6    = is_ipv6;
+  assign m_axis_tuser.is_arp     = is_arp;
+  assign m_axis_tuser.is_unknown = is_unknown;
 
 endmodule
