@@ -1,40 +1,31 @@
 // ============================================================
 // Module: protocol_classifier
-// Purpose: Classify Ethernet payload protocol
+// Purpose: Classify Ethernet payload protocol (portable)
 // ============================================================
 
 `timescale 1ns/1ps
-import eth_parser_pkg::*;
 
 module protocol_classifier (
-  input  ethertype_t resolved_ethertype,
-  input  logic       vlan_valid,
+  input  logic [15:0] resolved_ethertype,
+  input  logic        vlan_valid,
 
-  output logic       is_ipv4,
-  output logic       is_ipv6,
-  output logic       is_arp,
-  output logic       is_unknown,
-  output logic       proto_valid
+  output logic        is_ipv4,
+  output logic        is_ipv6,
+  output logic        is_arp,
+  output logic        is_unknown,
+  output logic        proto_valid
 );
 
-  always_comb begin
-    // Defaults
-    is_ipv4    = 1'b0;
-    is_ipv6    = 1'b0;
-    is_arp     = 1'b0;
-    is_unknown = 1'b0;
-    proto_valid = 1'b0;
+  // proto_valid strictly follows vlan_valid
+  assign proto_valid = vlan_valid;
 
-    if (vlan_valid) begin
-      proto_valid = 1'b1;
-
-      case (resolved_ethertype)
-        ETHERTYPE_IPV4: is_ipv4 = 1'b1;
-        ETHERTYPE_IPV6: is_ipv6 = 1'b1;
-        ETHERTYPE_ARP : is_arp  = 1'b1;
-        default       : is_unknown = 1'b1;
-      endcase
-    end
-  end
+  // Protocol decode (only valid when vlan_valid=1)
+  assign is_ipv4    = vlan_valid && (resolved_ethertype == 16'h0800);
+  assign is_ipv6    = vlan_valid && (resolved_ethertype == 16'h86DD);
+  assign is_arp     = vlan_valid && (resolved_ethertype == 16'h0806);
+  assign is_unknown = vlan_valid &&
+                      (resolved_ethertype != 16'h0800) &&
+                      (resolved_ethertype != 16'h86DD) &&
+                      (resolved_ethertype != 16'h0806);
 
 endmodule
