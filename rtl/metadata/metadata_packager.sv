@@ -1,77 +1,90 @@
 // ============================================================
 // Module: metadata_packager
-// Purpose: Latch parsed Ethernet metadata once per frame
+// Purpose: One-shot metadata latch per frame (portable)
 // ============================================================
 
 `timescale 1ns/1ps
-import eth_parser_pkg::*;
 
 module metadata_packager (
-  input  logic           clk,
-  input  logic           rst_n,
+  input  logic        clk,
+  input  logic        rst_n,
 
   // Frame control
-  input  logic           frame_start,
-  input  logic           frame_end,
+  input  logic        frame_start,
+  input  logic        frame_end,
 
-  // Parsed header fields
-  input  logic           fields_valid,
-  input  mac_addr_t      dest_mac,
-  input  mac_addr_t      src_mac,
+  // Parsed inputs
+  input  logic [47:0] dest_mac,
+  input  logic [47:0] src_mac,
+  input  logic [15:0] resolved_ethertype,
+  input  logic        vlan_present,
+  input  logic [11:0] vlan_id,
+  input  logic [4:0]  l2_header_len,
 
-  // VLAN info
-  input  logic           vlan_valid,
-  input  logic           vlan_present,
-  input  logic [11:0]    vlan_id,
-  input  ethertype_t     resolved_ethertype,
-  input  logic [4:0]     l2_header_len,
+  input  logic        proto_valid,
+  input  logic        is_ipv4,
+  input  logic        is_ipv6,
+  input  logic        is_arp,
+  input  logic        is_unknown,
 
-  // Protocol classification
-  input  logic           proto_valid,
-  input  logic           is_ipv4,
-  input  logic           is_ipv6,
-  input  logic           is_arp,
-  input  logic           is_unknown,
-
-  // Output metadata
-  output eth_metadata_t  metadata,
-  output logic           metadata_valid
+  // Metadata outputs (flattened)
+  output logic [47:0] meta_dest_mac,
+  output logic [47:0] meta_src_mac,
+  output logic [15:0] meta_ethertype,
+  output logic        meta_vlan_present,
+  output logic [11:0] meta_vlan_id,
+  output logic [4:0]  meta_l2_header_len,
+  output logic        meta_is_ipv4,
+  output logic        meta_is_ipv6,
+  output logic        meta_is_arp,
+  output logic        meta_is_unknown,
+  output logic        metadata_valid
 );
 
-  logic metadata_latched;
+  logic latched;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      metadata         <= '0;
-      metadata_valid   <= 1'b0;
-      metadata_latched <= 1'b0;
+      latched        <= 1'b0;
+      metadata_valid <= 1'b0;
+
+      meta_dest_mac       <= 48'h0;
+      meta_src_mac        <= 48'h0;
+      meta_ethertype      <= 16'h0;
+      meta_vlan_present   <= 1'b0;
+      meta_vlan_id        <= 12'h0;
+      meta_l2_header_len  <= 5'h0;
+      meta_is_ipv4        <= 1'b0;
+      meta_is_ipv6        <= 1'b0;
+      meta_is_arp         <= 1'b0;
+      meta_is_unknown     <= 1'b0;
     end
     else begin
-      // Reset at start of frame
+      // New frame clears latch
       if (frame_start) begin
-        metadata_valid   <= 1'b0;
-        metadata_latched <= 1'b0;
+        latched        <= 1'b0;
+        metadata_valid <= 1'b0;
       end
 
-      // Latch metadata exactly once per frame
-      if (proto_valid && !metadata_latched) begin
-        metadata.dest_mac      <= dest_mac;
-        metadata.src_mac       <= src_mac;
-        metadata.ethertype     <= resolved_ethertype;
-        metadata.vlan_present  <= vlan_present;
-        metadata.vlan_id       <= vlan_id;
-        metadata.l2_header_len <= l2_header_len;
+      // Latch metadata once per frame
+      if (proto_valid && !latched) begin
+        meta_dest_mac      <= dest_mac;
+        meta_src_mac       <= src_mac;
+        meta_ethertype     <= resolved_ethertype;
+        meta_vlan_present  <= vlan_present;
+        meta_vlan_id       <= vlan_id;
+        meta_l2_header_len <= l2_header_len;
 
-        metadata.is_ipv4       <= is_ipv4;
-        metadata.is_ipv6       <= is_ipv6;
-        metadata.is_arp        <= is_arp;
-        metadata.is_unknown    <= is_unknown;
+        meta_is_ipv4       <= is_ipv4;
+        meta_is_ipv6       <= is_ipv6;
+        meta_is_arp        <= is_arp;
+        meta_is_unknown    <= is_unknown;
 
-        metadata_valid   <= 1'b1;
-        metadata_latched <= 1'b1;
+        metadata_valid <= 1'b1;
+        latched        <= 1'b1;
       end
 
-      // Clear valid at end of frame
+      // Clear at frame end
       if (frame_end) begin
         metadata_valid <= 1'b0;
       end
