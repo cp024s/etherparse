@@ -1,62 +1,62 @@
 // ============================================================
 // Module: header_shift_register
-// Purpose: Robust Ethernet L2 header capture (byte-accurate)
+// Purpose: Capture first 18 bytes of Ethernet frame as byte array
 // ============================================================
 
 `timescale 1ns/1ps
+import eth_parser_pkg::*;
 
 module header_shift_register #(
-  parameter int DATA_WIDTH = 64,
-  parameter int L2_HEADER_MAX_BYTES = 18
+  parameter int DATA_WIDTH = 64
 )(
-  input  logic clk,
-  input  logic rst_n,
+  input  logic              clk,
+  input  logic              rst_n,
 
-  // Control
-  input  logic beat_accept,
-  input  logic frame_start,
+  // AXI beat control
+  input  logic              beat_accept,
+  input  logic              frame_start,
 
   // AXI data
   input  logic [DATA_WIDTH-1:0] axis_tdata,
 
   // Outputs
-  output logic [L2_HEADER_MAX_BYTES*8-1:0] header_bytes,
-  output logic                            header_valid
+  output eth_header_bytes_t header_bytes,
+  output logic              header_valid
 );
 
   localparam int BYTES_PER_BEAT = DATA_WIDTH / 8;
 
+  logic [4:0] byte_count; // counts 0..18
+
   integer i;
-  logic [$clog2(L2_HEADER_MAX_BYTES+1)-1:0] hdr_byte_idx;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      header_bytes <= '0;
-      hdr_byte_idx <= '0;
+      byte_count  <= 0;
+      header_bytes <= '{default:8'h00};
       header_valid <= 1'b0;
     end
-    else if (frame_start) begin
-      header_bytes <= '0;
-      hdr_byte_idx <= '0;
+    else begin
       header_valid <= 1'b0;
-    end
-    else if (beat_accept && !header_valid) begin
-      // Capture bytes sequentially
-      for (i = 0; i < BYTES_PER_BEAT; i++) begin
-        if (hdr_byte_idx + i < L2_HEADER_MAX_BYTES) begin
-          header_bytes[(hdr_byte_idx + i)*8 +: 8]
-            <= axis_tdata[i*8 +: 8];
+
+      if (frame_start) begin
+        byte_count  <= 0;
+        header_bytes <= '{default:8'h00};
+      end
+
+      if (beat_accept && byte_count < 18) begin
+        // Extract bytes from AXI beat (MSB first)
+        for (i = 0; i < BYTES_PER_BEAT; i++) begin
+          if (byte_count < 18) begin
+            header_bytes[byte_count] <=
+              axis_tdata[(DATA_WIDTH-1) - (i*8) -: 8];
+            byte_count <= byte_count + 1;
+          end
         end
       end
 
-      // Advance byte index
-      if (hdr_byte_idx + BYTES_PER_BEAT >= L2_HEADER_MAX_BYTES) begin
-        hdr_byte_idx <= L2_HEADER_MAX_BYTES;
+      if (byte_count == 18)
         header_valid <= 1'b1;
-      end
-      else begin
-        hdr_byte_idx <= hdr_byte_idx + BYTES_PER_BEAT;
-      end
     end
   end
 
