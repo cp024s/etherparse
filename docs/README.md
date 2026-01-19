@@ -1,9 +1,12 @@
-
 # <div align = center> Ethernet Frame Parser
 
 <div align = center>
 
-![Language](https://img.shields.io/badge/Language-SystemVerilog-blue) ![OS](https://img.shields.io/badge/Tested%20On-Ubuntu%2022.04-E95420?logo=ubuntu)  ![Domain](https://img.shields.io/badge/Domain-Packet%20Processing-success) ![Architecture](https://img.shields.io/badge/Architecture-Streaming%20Pipeline-orange) ![Interface](https://img.shields.io/badge/Interface-AXI4--Stream-informational) ![Processing](https://img.shields.io/badge/Processing-Frame--Based-yellow) ![Verification](https://img.shields.io/badge/Verification-Unit%20%7C%20Integration-brightgreen) ![Status](https://img.shields.io/badge/Status-In%20Development-lightgrey)
+![Language](https://img.shields.io/badge/Language-SystemVerilog-blue) ![OS](https://img.shields.io/badge/Tested%20On-Ubuntu%2022.04-E95420?logo=ubuntu)  ![Domain](https://img.shields.io/badge/Domain-Packet%20Processing-success) ![Architecture](https://img.shields.io/badge/Architecture-Streaming%20Pipeline-orange) ![Interface](https://img.shields.io/badge/Interface-AXI4--Stream-informational) ![Processing](https://img.shields.io/badge/Processing-Frame--Based-yellow) ![Verification](https://img.shields.io/badge/Verification-Unit%20%7C%20Integration-brightgreen) ![Status](https://img.shields.io/badge/Status-In%20Development-lightgrey) 
+
+![Unit Tests](https://img.shields.io/badge/unit%20tests-PASS-brightgreen) ![Integration Tests](https://img.shields.io/badge/integration%20tests-FAIL-red)
+
+
 
 Streaming Ethernet frame parser and metadata generator implemented in SystemVerilog.  
 Designed for AXI4-Stream–based packet processing pipelines.
