@@ -6,16 +6,26 @@ BUILD_DIR="$ROOT_DIR/build"
 
 mkdir -p "$BUILD_DIR"
 
+# Colors
+BLUE="\033[1;34m"
+GREEN="\033[1;32m"
+RED="\033[1;31m"
+RESET="\033[0m"
+
 log() {
-  echo -e "\n\033[1;34m[INFO]\033[0m $1"
+  echo -e "${BLUE}[INFO]${RESET} $1"
+}
+
+pass() {
+  echo -e "${GREEN}✔ $1${RESET}"
 }
 
 fail() {
-  echo -e "\n\033[1;31m[FAIL]\033[0m $1"
+  echo -e "${RED}✖ $1${RESET}"
   exit 1
 }
 
-run_cmd() {
-  log "Running: $*"
-  "$@" || fail "Command failed: $*"
+# Run a command silently, fail if it fails
+run_silent() {
+  "$@" > /dev/null 2>&1 || return 1
 }
