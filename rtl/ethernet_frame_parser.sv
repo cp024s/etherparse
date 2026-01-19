@@ -30,44 +30,69 @@ module ethernet_frame_parser #(
 );
 
   // ==========================================================
-  // AXI handshake (simple pass-through)
+  // AXI ingress
   // ==========================================================
-  logic beat_accept;
+  logic [DATA_WIDTH-1:0] axis_tdata;
+  logic                  axis_tvalid;
+  logic                  axis_tready;
+  logic                  axis_tlast;
+  logic                  beat_accept;
 
-  assign s_axis_tready = m_axis_tready;
-  assign m_axis_tvalid = s_axis_tvalid;
-  assign m_axis_tdata  = s_axis_tdata;
-  assign m_axis_tlast  = s_axis_tlast;
-
-  assign beat_accept = s_axis_tvalid && s_axis_tready;
+  axis_ingress #(
+    .DATA_WIDTH(DATA_WIDTH)
+  ) u_ingress (
+    .clk           (clk),
+    .rst_n         (rst_n),
+    .s_axis_tdata  (s_axis_tdata),
+    .s_axis_tvalid (s_axis_tvalid),
+    .s_axis_tready (s_axis_tready),
+    .s_axis_tlast  (s_axis_tlast),
+    .axis_tdata    (axis_tdata),
+    .axis_tvalid   (axis_tvalid),
+    .axis_tready   (axis_tready),
+    .axis_tlast    (axis_tlast),
+    .beat_accept   (beat_accept)
+  );
 
   // ==========================================================
-  // Frame control (SINGLE FRAME ONLY, NO FSM)
+  // Frame control FSM
   // ==========================================================
   logic frame_start;
   logic frame_end;
-  logic in_frame;
+  logic in_header;
+  logic in_payload;
+  logic header_done;
 
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      in_frame    <= 1'b0;
-      frame_start <= 1'b0;
-      frame_end   <= 1'b0;
-    end else begin
-      frame_start <= 1'b0;
-      frame_end   <= 1'b0;
+  frame_control_fsm u_fsm (
+    .clk         (clk),
+    .rst_n       (rst_n),
+    .beat_accept (beat_accept),
+    .tlast       (axis_tlast),
+    .frame_start (frame_start),
+    .frame_end   (frame_end),
+    .in_header   (in_header),
+    .in_payload  (in_payload),
+    .header_done (header_done)
+  );
 
-      if (beat_accept && !in_frame) begin
-        frame_start <= 1'b1;
-        in_frame    <= 1'b1;
-      end
+  // ==========================================================
+  // Byte counter
+  // ==========================================================
+  logic [$clog2(18 + DATA_WIDTH/8 + 1)-1:0] byte_count;
+  logic in_l2_header;
 
-      if (beat_accept && s_axis_tlast) begin
-        frame_end <= 1'b1;
-        in_frame  <= 1'b0;
-      end
-    end
-  end
+  byte_counter #(
+    .DATA_WIDTH(DATA_WIDTH),
+    .L2_HEADER_MAX_BYTES(18)
+  ) u_byte_cnt (
+    .clk          (clk),
+    .rst_n        (rst_n),
+    .beat_accept  (beat_accept),
+    .frame_start  (frame_start),
+    .frame_end    (frame_end),
+    .byte_count   (byte_count),
+    .in_l2_header (in_l2_header)
+  );
 
   // ==========================================================
   // Header capture
@@ -77,12 +102,12 @@ module ethernet_frame_parser #(
 
   header_shift_register #(
     .DATA_WIDTH(DATA_WIDTH)
-  ) u_header_capture (
+  ) u_hdr_shift (
     .clk          (clk),
     .rst_n        (rst_n),
     .beat_accept  (beat_accept),
     .frame_start  (frame_start),
-    .axis_tdata   (s_axis_tdata),
+    .axis_tdata   (axis_tdata),
     .header_bytes (header_bytes),
     .header_valid (header_valid)
   );
@@ -141,11 +166,11 @@ module ethernet_frame_parser #(
   );
 
   // ==========================================================
-  // Metadata packaging (FIXED INTERFACE)
+  // Metadata packaging (race-free)
   // ==========================================================
-  logic [47:0] meta_dest_mac;
+  eth_metadata_t metadata_bus;
 
-  metadata_packager u_metadata (
+  metadata_packager u_meta (
     .clk                (clk),
     .rst_n              (rst_n),
     .frame_start        (frame_start),
@@ -161,20 +186,41 @@ module ethernet_frame_parser #(
     .is_ipv6            (is_ipv6),
     .is_arp             (is_arp),
     .is_unknown         (is_unknown),
-    .meta_dest_mac      (meta_dest_mac),
+    .meta_dest_mac      (metadata_bus.dest_mac),
     .metadata_valid     (m_axis_tuser_valid)
   );
 
-  // Map to AXI TUSER
-  assign m_axis_tuser.dest_mac   = meta_dest_mac;
-  assign m_axis_tuser.src_mac    = src_mac;
-  assign m_axis_tuser.ethertype  = resolved_ethertype;
-  assign m_axis_tuser.vlan_present = vlan_present;
-  assign m_axis_tuser.vlan_id    = vlan_id;
-  assign m_axis_tuser.l2_header_len = l2_header_len;
-  assign m_axis_tuser.is_ipv4    = is_ipv4;
-  assign m_axis_tuser.is_ipv6    = is_ipv6;
-  assign m_axis_tuser.is_arp     = is_arp;
-  assign m_axis_tuser.is_unknown = is_unknown;
+  // Populate remaining metadata fields
+  assign metadata_bus.src_mac       = src_mac;
+  assign metadata_bus.ethertype     = resolved_ethertype;
+  assign metadata_bus.vlan_present  = vlan_present;
+  assign metadata_bus.vlan_id       = vlan_id;
+  assign metadata_bus.l2_header_len = l2_header_len;
+  assign metadata_bus.is_ipv4       = is_ipv4;
+  assign metadata_bus.is_ipv6       = is_ipv6;
+  assign metadata_bus.is_arp        = is_arp;
+  assign metadata_bus.is_unknown    = is_unknown;
+
+  // ==========================================================
+  // AXI egress
+  // ==========================================================
+  axis_egress #(
+    .DATA_WIDTH(DATA_WIDTH)
+  ) u_egress (
+    .clk               (clk),
+    .rst_n             (rst_n),
+    .axis_tdata_in     (axis_tdata),
+    .axis_tvalid_in    (axis_tvalid),
+    .axis_tready_in    (axis_tready),
+    .axis_tlast_in     (axis_tlast),
+    .m_axis_tdata      (m_axis_tdata),
+    .m_axis_tvalid     (m_axis_tvalid),
+    .m_axis_tready     (m_axis_tready),
+    .m_axis_tlast      (m_axis_tlast),
+    .metadata_in       (metadata_bus),
+    .metadata_valid_in (m_axis_tuser_valid),
+    .metadata_out      (m_axis_tuser),
+    .metadata_valid_out()
+  );
 
 endmodule

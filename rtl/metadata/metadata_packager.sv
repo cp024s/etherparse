@@ -1,10 +1,10 @@
 // ============================================================
 // Module: metadata_packager
-// Purpose: Latch parsed Ethernet metadata once per frame
-//          (FIXED: race-free proto_valid handling)
+// Purpose: Latch and emit Ethernet metadata once per frame
 // ============================================================
 
 `timescale 1ns/1ps
+import eth_parser_pkg::*;
 
 module metadata_packager (
   input  logic        clk,
@@ -14,10 +14,10 @@ module metadata_packager (
   input  logic        frame_start,
   input  logic        frame_end,
 
-  // Parsed fields
-  input  logic [47:0] dest_mac,
-  input  logic [47:0] src_mac,
-  input  logic [15:0] resolved_ethertype,
+  // Parsed header fields
+  input  mac_addr_t   dest_mac,
+  input  mac_addr_t   src_mac,
+  input  ethertype_t  resolved_ethertype,
   input  logic        vlan_present,
   input  logic [11:0] vlan_id,
   input  logic [4:0]  l2_header_len,
@@ -29,51 +29,41 @@ module metadata_packager (
   input  logic        is_arp,
   input  logic        is_unknown,
 
-  // Output metadata
-  output logic [47:0] meta_dest_mac,
+  // Outputs
+  output mac_addr_t   meta_dest_mac,
   output logic        metadata_valid
 );
 
   // ----------------------------------------------------------
   // Internal state
   // ----------------------------------------------------------
-  logic latched;
-  logic proto_valid_d;
+  logic metadata_sent;
 
   // ----------------------------------------------------------
-  // Register proto_valid to avoid combinational race
-  // ----------------------------------------------------------
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n)
-      proto_valid_d <= 1'b0;
-    else
-      proto_valid_d <= proto_valid;
-  end
-
-  // ----------------------------------------------------------
-  // Metadata latch logic
+  // Metadata generation logic
   // ----------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      latched        <= 1'b0;
       metadata_valid <= 1'b0;
-      meta_dest_mac <= '0;
+      metadata_sent  <= 1'b0;
+      meta_dest_mac  <= '0;
     end
     else begin
-      // Clear state at start of frame
+      // Reset metadata state at start of every frame
       if (frame_start) begin
-        latched        <= 1'b0;
+        metadata_valid <= 1'b0;
+        metadata_sent  <= 1'b0;
+      end
+
+      // Emit metadata exactly once per frame
+      if (proto_valid && !metadata_sent) begin
+        meta_dest_mac  <= dest_mac;
+        metadata_valid <= 1'b1;
+        metadata_sent  <= 1'b1;
+      end
+      else begin
         metadata_valid <= 1'b0;
       end
-
-      // Latch metadata ONCE per frame
-      else if (proto_valid_d && !latched) begin
-        meta_dest_mac <= dest_mac;
-        metadata_valid <= 1'b1;
-        latched        <= 1'b1;
-      end
-
-      // Metadata remains valid until next frame_start
     end
   end
 
