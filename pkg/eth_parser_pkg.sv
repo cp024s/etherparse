@@ -2,7 +2,7 @@
 // Package: eth_parser_pkg
 // Purpose: Global types, constants, and metadata definition
 // ============================================================
-
+`timescale 1ns/1ps
 package eth_parser_pkg;
 
   // ----------------------------------------------------------
