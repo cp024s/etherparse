@@ -4,6 +4,8 @@ source "$(dirname "$0")/common.sh"
 
 log "Running UNIT tests"
 
+AXIS_RTL="$ROOT_DIR/rtl/axis"
+
 # -------------------------
 # eth_header_parser
 # -------------------------
@@ -11,7 +13,11 @@ log "eth_header_parser UNIT TEST"
 if run_silent iverilog -g2012 \
   -I "$ROOT_DIR/pkg" \
   -I "$ROOT_DIR/rtl/parser" \
+  -I "$ROOT_DIR/rtl/axis" \
   "$ROOT_DIR/pkg/eth_parser_pkg.sv" \
+  "$AXIS_RTL/axis_ingress.sv" \
+  "$AXIS_RTL/axis_skid_buffer.sv" \
+  "$AXIS_RTL/axis_egress.sv" \
   "$ROOT_DIR/rtl/parser/eth_header_parser.sv" \
   "$ROOT_DIR/tb/unit/eth_header_parser_tb.sv" \
   -o "$BUILD_DIR/eth_header_parser_tb" \
@@ -29,7 +35,11 @@ log "header_shift_register UNIT TEST"
 if run_silent iverilog -g2012 \
   -I "$ROOT_DIR/pkg" \
   -I "$ROOT_DIR/rtl/parser" \
+  -I "$ROOT_DIR/rtl/axis" \
   "$ROOT_DIR/pkg/eth_parser_pkg.sv" \
+  "$AXIS_RTL/axis_ingress.sv" \
+  "$AXIS_RTL/axis_skid_buffer.sv" \
+  "$AXIS_RTL/axis_egress.sv" \
   "$ROOT_DIR/rtl/parser/header_shift_register.sv" \
   "$ROOT_DIR/tb/unit/header_shift_register_tb.sv" \
   -o "$BUILD_DIR/header_shift_register_tb" \
@@ -47,7 +57,11 @@ log "vlan_resolver UNIT TEST"
 if run_silent iverilog -g2012 \
   -I "$ROOT_DIR/pkg" \
   -I "$ROOT_DIR/rtl/parser" \
+  -I "$ROOT_DIR/rtl/axis" \
   "$ROOT_DIR/pkg/eth_parser_pkg.sv" \
+  "$AXIS_RTL/axis_ingress.sv" \
+  "$AXIS_RTL/axis_skid_buffer.sv" \
+  "$AXIS_RTL/axis_egress.sv" \
   "$ROOT_DIR/rtl/parser/vlan_resolver.sv" \
   "$ROOT_DIR/tb/unit/vlan_resolver_tb.sv" \
   -o "$BUILD_DIR/vlan_resolver_tb" \
@@ -65,7 +79,11 @@ log "protocol_classifier UNIT TEST"
 if run_silent iverilog -g2012 \
   -I "$ROOT_DIR/pkg" \
   -I "$ROOT_DIR/rtl/parser" \
+  -I "$ROOT_DIR/rtl/axis" \
   "$ROOT_DIR/pkg/eth_parser_pkg.sv" \
+  "$AXIS_RTL/axis_ingress.sv" \
+  "$AXIS_RTL/axis_skid_buffer.sv" \
+  "$AXIS_RTL/axis_egress.sv" \
   "$ROOT_DIR/rtl/parser/protocol_classifier.sv" \
   "$ROOT_DIR/tb/unit/protocol_classifier_tb.sv" \
   -o "$BUILD_DIR/protocol_classifier_tb" \
@@ -83,7 +101,11 @@ log "metadata_packager UNIT TEST"
 if run_silent iverilog -g2012 \
   -I "$ROOT_DIR/pkg" \
   -I "$ROOT_DIR/rtl/metadata" \
+  -I "$ROOT_DIR/rtl/axis" \
   "$ROOT_DIR/pkg/eth_parser_pkg.sv" \
+  "$AXIS_RTL/axis_ingress.sv" \
+  "$AXIS_RTL/axis_skid_buffer.sv" \
+  "$AXIS_RTL/axis_egress.sv" \
   "$ROOT_DIR/rtl/metadata/metadata_packager.sv" \
   "$ROOT_DIR/tb/unit/metadata_packager_tb.sv" \
   -o "$BUILD_DIR/metadata_packager_tb" \
