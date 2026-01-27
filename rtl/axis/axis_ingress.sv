@@ -1,40 +1,40 @@
 // ============================================================
 // Module: axis_ingress
-// Purpose: AXI4-Stream ingress adapter (pass-through)
+// Purpose:
+//  - AXI stream ingress boundary
+//  - Pure pass-through (no buffering, no elasticity)
 // ============================================================
 
 `timescale 1ns/1ps
 
 module axis_ingress #(
-  parameter int DATA_WIDTH = 64
+  parameter int DATA_WIDTH = 64,
+  parameter int USER_WIDTH = 1
 )(
-  input  logic                  clk,
-  input  logic                  rst_n,
+  input  logic                   clk,
+  input  logic                   rst_n,
 
-  // AXI input
-  input  logic [DATA_WIDTH-1:0] s_axis_tdata,
-  input  logic                  s_axis_tvalid,
-  output logic                  s_axis_tready,
-  input  logic                  s_axis_tlast,
+  // External AXI stream
+  input  logic [DATA_WIDTH-1:0]  s_tdata,
+  input  logic                   s_tvalid,
+  output logic                   s_tready,
+  input  logic                   s_tlast,
+  input  logic [USER_WIDTH-1:0]  s_tuser,
 
-  // AXI output
-  output logic [DATA_WIDTH-1:0] axis_tdata,
-  output logic                  axis_tvalid,
-  input  logic                  axis_tready,
-  output logic                  axis_tlast,
-
-  // Handshake indicator
-  output logic                  beat_accept
+  // Internal AXI stream
+  output logic [DATA_WIDTH-1:0]  m_tdata,
+  output logic                   m_tvalid,
+  input  logic                   m_tready,
+  output logic                   m_tlast,
+  output logic [USER_WIDTH-1:0]  m_tuser
 );
 
-  // Pass-through
-  assign axis_tdata  = s_axis_tdata;
-  assign axis_tvalid = s_axis_tvalid;
-  assign axis_tlast  = s_axis_tlast;
+  // Pure wiring — no state
+  assign m_tdata  = s_tdata;
+  assign m_tvalid = s_tvalid;
+  assign m_tlast  = s_tlast;
+  assign m_tuser  = s_tuser;
 
-  assign s_axis_tready = axis_tready;
-
-  // Beat accepted when both valid and ready
-  assign beat_accept = s_axis_tvalid && s_axis_tready;
+  assign s_tready = m_tready;
 
 endmodule
