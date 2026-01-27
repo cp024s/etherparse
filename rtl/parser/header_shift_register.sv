@@ -1,7 +1,7 @@
 // ============================================================
 // Module: header_shift_register
 // Purpose: Capture first 18 bytes of Ethernet frame
-// Owner  : frame_control_fsm
+//          LSB-first (AXI-compliant)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -12,20 +12,15 @@ module header_shift_register #(
   input  logic                  clk,
   input  logic                  rst_n,
 
-  // Control from FSM
-  input  logic                  beat_accept,   // asserted when this beat is consumed
-  input  logic                  frame_start,   // single-cycle pulse at SOF
-
-  // Data
+  input  logic                  beat_accept,
+  input  logic                  frame_start,
   input  logic [DATA_WIDTH-1:0] axis_tdata,
 
-  // Output
   output logic [17:0][7:0]      header_bytes,
-  output logic                  header_valid
+  output logic                 header_valid
 );
 
   localparam int BYTES_PER_BEAT = DATA_WIDTH / 8;
-  localparam int HEADER_BYTES  = 18;
 
   integer i;
   logic [4:0] byte_count;
@@ -33,34 +28,28 @@ module header_shift_register #(
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      byte_count   <= '0;
-      header_valid <= 1'b0;
-      for (i = 0; i < HEADER_BYTES; i++)
+      byte_count   <= 0;
+      header_valid <= 0;
+      for (i = 0; i < 18; i++)
         header_bytes[i] <= 8'h00;
     end else begin
-      // Reset collection on new frame
       if (frame_start) begin
-        byte_count   <= '0;
-        header_valid <= 1'b0;
-        for (i = 0; i < HEADER_BYTES; i++)
-          header_bytes[i] <= 8'h00;
+        byte_count   <= 0;
+        header_valid <= 0;
       end
-      // Collect bytes only on accepted beats
-      else if (beat_accept && !header_valid && byte_count < HEADER_BYTES) begin
+      else if (beat_accept && !header_valid) begin
         next_byte_count = byte_count;
 
         for (i = 0; i < BYTES_PER_BEAT; i++) begin
-          if (next_byte_count < HEADER_BYTES) begin
-            // MSB-first extraction
-            header_bytes[next_byte_count] <=
-              axis_tdata[(DATA_WIDTH-1) - (i*8) -: 8];
+          if (next_byte_count < 18) begin
+            header_bytes[next_byte_count] <= axis_tdata[(i*8) +: 8];
             next_byte_count++;
           end
         end
 
         byte_count <= next_byte_count;
 
-        if (next_byte_count == HEADER_BYTES)
+        if (next_byte_count >= 18)
           header_valid <= 1'b1;
       end
     end
