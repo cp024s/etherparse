@@ -1,7 +1,7 @@
 // ============================================================
 // Module: metadata_packager
-// Purpose: Assemble parsed Ethernet metadata into a single
-//          canonical eth_metadata_t struct
+// Purpose: Pure metadata aggregation
+//          Emits metadata on proto_valid ONLY
 // ============================================================
 
 `timescale 1ns/1ps
@@ -11,11 +11,11 @@ module metadata_packager (
   input  logic         clk,
   input  logic         rst_n,
 
-  // Frame lifecycle (used for future extensions)
+  // Frame lifecycle (currently unused but future-safe)
   input  logic         frame_start,
   input  logic         frame_end,
 
-  // Parsed fields
+  // Parsed fields (assumed stable when proto_valid is high)
   input  mac_addr_t    dest_mac,
   input  mac_addr_t    src_mac,
 
@@ -31,31 +31,21 @@ module metadata_packager (
   input  logic         is_arp,
   input  logic         is_unknown,
 
-  // Canonical metadata output
+  // Output
   output eth_metadata_t metadata,
   output logic          metadata_valid
 );
 
-  // ----------------------------------------------------------
-  // Metadata register
-  // ----------------------------------------------------------
-
   eth_metadata_t metadata_r;
-
-  // ----------------------------------------------------------
-  // Sequential logic
-  // ----------------------------------------------------------
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      metadata_r      <= '0;
-      metadata_valid  <= 1'b0;
-    end
-    else begin
-      // Default: metadata_valid is a pulse
+      metadata_r     <= '0;
+      metadata_valid <= 1'b0;
+    end else begin
       metadata_valid <= 1'b0;
 
-      // Emit metadata once protocol is resolved
+      // Emit metadata exactly once per frame
       if (proto_valid) begin
         metadata_r.dest_mac      <= dest_mac;
         metadata_r.src_mac       <= src_mac;
@@ -73,10 +63,6 @@ module metadata_packager (
       end
     end
   end
-
-  // ----------------------------------------------------------
-  // Output assignment
-  // ----------------------------------------------------------
 
   assign metadata = metadata_r;
 
