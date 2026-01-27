@@ -2,7 +2,6 @@
 // Module: frame_control_fsm
 // Purpose: Frame lifecycle control (deadlock-safe)
 // ============================================================
-
 `timescale 1ns/1ps
 
 module frame_control_fsm (
@@ -13,7 +12,7 @@ module frame_control_fsm (
   input  logic beat_accept,
   input  logic tlast,
 
-  // Header completion (from byte_counter)
+  // Header completion
   input  logic header_done,
 
   // Control outputs
@@ -23,82 +22,116 @@ module frame_control_fsm (
   output logic in_payload
 );
 
-  // ----------------------------------------------------------
-  // State encoding
-  // ----------------------------------------------------------
   typedef enum logic [1:0] {
-    ST_IDLE,
-    ST_HEADER,
-    ST_PAYLOAD
+    IDLE,
+    HEADER,
+    PAYLOAD
   } state_t;
 
   state_t state, state_n;
 
-  // ----------------------------------------------------------
-  // State register
-  // ----------------------------------------------------------
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n)
-      state <= ST_IDLE;
-    else
-      state <= state_n;
-  end
-
-  // ----------------------------------------------------------
-  // Next-state logic (PURELY REACTIVE)
-  // ----------------------------------------------------------
+  // ------------------------------------------------------------
+  // Combinational next-state logic
+  // ------------------------------------------------------------
   always_comb begin
     state_n = state;
 
     case (state)
-      ST_IDLE: begin
+      IDLE: begin
         if (beat_accept)
-          state_n = ST_HEADER;
+          state_n = HEADER;
       end
 
-      ST_HEADER: begin
+      HEADER: begin
+        if (beat_accept && header_done)
+          state_n = PAYLOAD;
+      end
+
+      PAYLOAD: begin
         if (beat_accept && tlast)
-          state_n = ST_IDLE;
-        else if (beat_accept && header_done)
-          state_n = ST_PAYLOAD;
+          state_n = IDLE;
       end
 
-      ST_PAYLOAD: begin
-        if (beat_accept && tlast)
-          state_n = ST_IDLE;
-      end
-
-      default: state_n = ST_IDLE;
+      default: state_n = IDLE;
     endcase
   end
 
-  // ----------------------------------------------------------
-  // Output logic (Moore-style, NO gating)
-  // ----------------------------------------------------------
-  always_comb begin
-    frame_start = 1'b0;
-    frame_end   = 1'b0;
-    in_header   = 1'b0;
-    in_payload  = 1'b0;
-
-    case (state)
-      ST_IDLE: begin
-        if (beat_accept)
-          frame_start = 1'b1;
-      end
-
-      ST_HEADER: begin
-        in_header = 1'b1;
-      end
-
-      ST_PAYLOAD: begin
-        in_payload = 1'b1;
-      end
-    endcase
-
-    // Frame end is event-based, not state-based
-    if (beat_accept && tlast)
-      frame_end = 1'b1;
+  // ------------------------------------------------------------
+  // Sequential state register
+  // ------------------------------------------------------------
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      state <= IDLE;
+    else
+      state <= state_n;
   end
+
+  // ------------------------------------------------------------
+  // Output logic (registered, deterministic)
+  // ------------------------------------------------------------
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      frame_start <= 1'b0;
+      frame_end   <= 1'b0;
+      in_header   <= 1'b0;
+      in_payload  <= 1'b0;
+    end
+    else begin
+      // defaults
+      frame_start <= 1'b0;
+      frame_end   <= 1'b0;
+
+      case (state)
+        IDLE: begin
+          in_header  <= 1'b0;
+          in_payload <= 1'b0;
+
+          if (beat_accept)
+            frame_start <= 1'b1;
+        end
+
+        HEADER: begin
+          in_header  <= 1'b1;
+          in_payload <= 1'b0;
+        end
+
+        PAYLOAD: begin
+          in_header  <= 1'b0;
+          in_payload <= 1'b1;
+
+          if (beat_accept && tlast)
+            frame_end <= 1'b1;
+        end
+
+        default: begin
+          in_header  <= 1'b0;
+          in_payload <= 1'b0;
+        end
+      endcase
+    end
+  end
+
+`ifndef SYNTHESIS
+  // ------------------------------------------------------------
+  // Assertions (Verilator-safe, meaningful)
+  // ------------------------------------------------------------
+  always_ff @(posedge clk) begin
+    if (rst_n) begin
+      // frame_start only allowed from IDLE
+      if (frame_start)
+        assert (state == IDLE)
+          else $fatal("FSM: frame_start asserted outside IDLE");
+
+      // frame_end only allowed in PAYLOAD with tlast
+      if (frame_end)
+        assert (state == PAYLOAD && tlast)
+          else $fatal("FSM: frame_end without PAYLOAD+tlast");
+
+      // in_header and in_payload must never overlap
+      assert (!(in_header && in_payload))
+        else $fatal("FSM: in_header and in_payload both high");
+    end
+  end
+`endif
 
 endmodule
