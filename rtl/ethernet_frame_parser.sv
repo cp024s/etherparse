@@ -68,19 +68,16 @@ module ethernet_frame_parser #(
     .rst_n       (rst_n),
     .beat_accept (beat_accept),
     .tlast       (axis_tlast),
+    .header_done (header_done),
     .frame_start (frame_start),
     .frame_end   (frame_end),
     .in_header   (in_header),
-    .in_payload  (in_payload),
-    .header_done (header_done)
+    .in_payload  (in_payload)
   );
 
   // ==========================================================
   // Byte counter
   // ==========================================================
-  logic [$clog2(18 + DATA_WIDTH/8 + 1)-1:0] byte_count;
-  logic in_l2_header;
-
   byte_counter #(
     .DATA_WIDTH(DATA_WIDTH),
     .L2_HEADER_MAX_BYTES(18)
@@ -90,8 +87,7 @@ module ethernet_frame_parser #(
     .beat_accept  (beat_accept),
     .frame_start  (frame_start),
     .frame_end    (frame_end),
-    .byte_count   (byte_count),
-    .in_l2_header (in_l2_header)
+    .header_done  (header_done)
   );
 
   // ==========================================================
@@ -166,9 +162,10 @@ module ethernet_frame_parser #(
   );
 
   // ==========================================================
-  // Metadata packaging (race-free)
+  // Metadata packaging (RAW)
   // ==========================================================
-  eth_metadata_t metadata_bus;
+  eth_metadata_t metadata_raw;
+  logic          metadata_raw_valid;
 
   metadata_packager u_meta (
     .clk                (clk),
@@ -186,20 +183,45 @@ module ethernet_frame_parser #(
     .is_ipv6            (is_ipv6),
     .is_arp             (is_arp),
     .is_unknown         (is_unknown),
-    .meta_dest_mac      (metadata_bus.dest_mac),
-    .metadata_valid     (m_axis_tuser_valid)
+    .metadata           (metadata_raw),
+    .metadata_valid     (metadata_raw_valid)
   );
 
-  // Populate remaining metadata fields
-  assign metadata_bus.src_mac       = src_mac;
-  assign metadata_bus.ethertype     = resolved_ethertype;
-  assign metadata_bus.vlan_present  = vlan_present;
-  assign metadata_bus.vlan_id       = vlan_id;
-  assign metadata_bus.l2_header_len = l2_header_len;
-  assign metadata_bus.is_ipv4       = is_ipv4;
-  assign metadata_bus.is_ipv6       = is_ipv6;
-  assign metadata_bus.is_arp        = is_arp;
-  assign metadata_bus.is_unknown    = is_unknown;
+// ==========================================================
+// METADATA ALIGNMENT (EGRESS-CORRECT)
+// ==========================================================
+
+eth_metadata_t metadata_latched;
+logic          metadata_pending;
+
+always_ff @(posedge clk or negedge rst_n) begin
+  if (!rst_n) begin
+    metadata_latched <= '0;
+    metadata_pending <= 1'b0;
+  end else begin
+    // Capture metadata when parsing completes
+    if (metadata_raw_valid) begin
+      metadata_latched <= metadata_raw;
+      metadata_pending <= 1'b1;
+    end
+
+    // Clear ONLY after metadata is emitted on AXI egress
+    if (metadata_pending &&
+        m_axis_tvalid &&
+        m_axis_tready &&
+        m_axis_tlast) begin
+      metadata_pending <= 1'b0;
+    end
+  end
+end
+
+assign m_axis_tuser       = metadata_latched;
+assign m_axis_tuser_valid =
+  metadata_pending &&
+  m_axis_tvalid &&
+  m_axis_tready &&
+  m_axis_tlast;
+
 
   // ==========================================================
   // AXI egress
@@ -207,20 +229,16 @@ module ethernet_frame_parser #(
   axis_egress #(
     .DATA_WIDTH(DATA_WIDTH)
   ) u_egress (
-    .clk               (clk),
-    .rst_n             (rst_n),
-    .axis_tdata_in     (axis_tdata),
-    .axis_tvalid_in    (axis_tvalid),
-    .axis_tready_in    (axis_tready),
-    .axis_tlast_in     (axis_tlast),
-    .m_axis_tdata      (m_axis_tdata),
-    .m_axis_tvalid     (m_axis_tvalid),
-    .m_axis_tready     (m_axis_tready),
-    .m_axis_tlast      (m_axis_tlast),
-    .metadata_in       (metadata_bus),
-    .metadata_valid_in (m_axis_tuser_valid),
-    .metadata_out      (m_axis_tuser),
-    .metadata_valid_out()
+    .clk            (clk),
+    .rst_n          (rst_n),
+    .axis_tdata_in  (axis_tdata),
+    .axis_tvalid_in (axis_tvalid),
+    .axis_tready_in (axis_tready),
+    .axis_tlast_in  (axis_tlast),
+    .m_axis_tdata   (m_axis_tdata),
+    .m_axis_tvalid  (m_axis_tvalid),
+    .m_axis_tready  (m_axis_tready),
+    .m_axis_tlast   (m_axis_tlast)
   );
 
 endmodule
