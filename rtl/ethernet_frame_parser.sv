@@ -1,6 +1,20 @@
 // ============================================================
 // Module: ethernet_frame_parser
-// Purpose: Top-level Ethernet frame parsing and metadata tagging
+// Purpose:
+//  Top-level Ethernet frame parser with clean AXIS ownership
+//  and out-of-band metadata generation.
+//
+//  Architecture:
+//    axis_ingress
+//      → axis_skid_buffer        (sole elasticity owner)
+//        → frame_control_fsm
+//          → byte_counter
+//            → header_shift_register
+//              → eth_header_parser
+//                → vlan_resolver
+//                  → protocol_classifier
+//                    → metadata_packager
+//        → axis_egress
 // ============================================================
 
 `timescale 1ns/1ps
@@ -24,35 +38,63 @@ module ethernet_frame_parser #(
   input  logic                  m_axis_tready,
   output logic                  m_axis_tlast,
 
-  // Metadata output
+  // Metadata output (sideband)
   output eth_metadata_t         m_axis_tuser,
   output logic                  m_axis_tuser_valid
 );
 
   // ==========================================================
-  // AXI ingress
+  // AXIS ingress (pure pass-through)
+  // ==========================================================
+  logic [DATA_WIDTH-1:0] ing_tdata;
+  logic                  ing_tvalid;
+  logic                  ing_tready;
+  logic                  ing_tlast;
+
+  axis_ingress #(
+    .DATA_WIDTH(DATA_WIDTH)
+  ) u_ingress (
+    .clk      (clk),
+    .rst_n    (rst_n),
+    .s_tdata  (s_axis_tdata),
+    .s_tvalid (s_axis_tvalid),
+    .s_tready (s_axis_tready),
+    .s_tlast  (s_axis_tlast),
+    .m_tdata  (ing_tdata),
+    .m_tvalid (ing_tvalid),
+    .m_tready (ing_tready),
+    .m_tlast  (ing_tlast),
+    .m_tuser  ()
+  );
+
+  // ==========================================================
+  // AXIS skid buffer (sole elasticity owner)
   // ==========================================================
   logic [DATA_WIDTH-1:0] axis_tdata;
   logic                  axis_tvalid;
   logic                  axis_tready;
   logic                  axis_tlast;
-  logic                  beat_accept;
 
-  axis_ingress #(
+  axis_skid_buffer #(
     .DATA_WIDTH(DATA_WIDTH)
-  ) u_ingress (
-    .clk           (clk),
-    .rst_n         (rst_n),
-    .s_axis_tdata  (s_axis_tdata),
-    .s_axis_tvalid (s_axis_tvalid),
-    .s_axis_tready (s_axis_tready),
-    .s_axis_tlast  (s_axis_tlast),
-    .axis_tdata    (axis_tdata),
-    .axis_tvalid   (axis_tvalid),
-    .axis_tready   (axis_tready),
-    .axis_tlast    (axis_tlast),
-    .beat_accept   (beat_accept)
+  ) u_skid (
+    .clk      (clk),
+    .rst_n    (rst_n),
+    .s_tdata  (ing_tdata),
+    .s_tvalid (ing_tvalid),
+    .s_tready (ing_tready),
+    .s_tlast  (ing_tlast),
+    .m_tdata  (axis_tdata),
+    .m_tvalid (axis_tvalid),
+    .m_tready (axis_tready),
+    .m_tlast  (axis_tlast)
   );
+
+  // ==========================================================
+  // Beat accept (single definition)
+  // ==========================================================
+  logic beat_accept;
+  assign beat_accept = axis_tvalid && axis_tready;
 
   // ==========================================================
   // Frame control FSM
@@ -68,30 +110,25 @@ module ethernet_frame_parser #(
     .rst_n       (rst_n),
     .beat_accept (beat_accept),
     .tlast       (axis_tlast),
+    .header_done (header_done),
     .frame_start (frame_start),
     .frame_end   (frame_end),
     .in_header   (in_header),
-    .in_payload  (in_payload),
-    .header_done (header_done)
+    .in_payload  (in_payload)
   );
 
   // ==========================================================
-  // Byte counter
+  // Byte counter (header_done generation)
   // ==========================================================
-  logic [$clog2(18 + DATA_WIDTH/8 + 1)-1:0] byte_count;
-  logic in_l2_header;
-
   byte_counter #(
-    .DATA_WIDTH(DATA_WIDTH),
-    .L2_HEADER_MAX_BYTES(18)
+    .DATA_WIDTH   (DATA_WIDTH),
+    .HEADER_BYTES (18)
   ) u_byte_cnt (
-    .clk          (clk),
-    .rst_n        (rst_n),
-    .beat_accept  (beat_accept),
-    .frame_start  (frame_start),
-    .frame_end    (frame_end),
-    .byte_count   (byte_count),
-    .in_l2_header (in_l2_header)
+    .clk         (clk),
+    .rst_n       (rst_n),
+    .beat_accept (beat_accept),
+    .frame_start (frame_start),
+    .header_done (header_done)
   );
 
   // ==========================================================
@@ -166,7 +203,7 @@ module ethernet_frame_parser #(
   );
 
   // ==========================================================
-  // Metadata packaging (race-free)
+  // Metadata packaging (sideband, race-free)
   // ==========================================================
   eth_metadata_t metadata_bus;
 
@@ -190,7 +227,6 @@ module ethernet_frame_parser #(
     .metadata_valid     (m_axis_tuser_valid)
   );
 
-  // Populate remaining metadata fields
   assign metadata_bus.src_mac       = src_mac;
   assign metadata_bus.ethertype     = resolved_ethertype;
   assign metadata_bus.vlan_present  = vlan_present;
@@ -201,26 +237,26 @@ module ethernet_frame_parser #(
   assign metadata_bus.is_arp        = is_arp;
   assign metadata_bus.is_unknown    = is_unknown;
 
+  assign m_axis_tuser = metadata_bus;
+
   // ==========================================================
-  // AXI egress
+  // AXIS egress (pure pass-through)
   // ==========================================================
   axis_egress #(
     .DATA_WIDTH(DATA_WIDTH)
   ) u_egress (
-    .clk               (clk),
-    .rst_n             (rst_n),
-    .axis_tdata_in     (axis_tdata),
-    .axis_tvalid_in    (axis_tvalid),
-    .axis_tready_in    (axis_tready),
-    .axis_tlast_in     (axis_tlast),
-    .m_axis_tdata      (m_axis_tdata),
-    .m_axis_tvalid     (m_axis_tvalid),
-    .m_axis_tready     (m_axis_tready),
-    .m_axis_tlast      (m_axis_tlast),
-    .metadata_in       (metadata_bus),
-    .metadata_valid_in (m_axis_tuser_valid),
-    .metadata_out      (m_axis_tuser),
-    .metadata_valid_out()
+    .clk      (clk),
+    .rst_n    (rst_n),
+    .s_tdata  (axis_tdata),
+    .s_tvalid (axis_tvalid),
+    .s_tready (axis_tready),
+    .s_tlast  (axis_tlast),
+    .s_tuser  ('0),
+    .m_tdata  (m_axis_tdata),
+    .m_tvalid (m_axis_tvalid),
+    .m_tready (m_axis_tready),
+    .m_tlast  (m_axis_tlast),
+    .m_tuser  ()
   );
 
 endmodule
