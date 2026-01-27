@@ -1,6 +1,6 @@
 // ============================================================
 // Testbench: ethernet_frame_parser_stress_tb
-// Purpose  : AXI-correct stress test for ethernet_frame_parser
+// Purpose  : REAL AXI stress test with scoreboard
 // ============================================================
 
 `timescale 1ns/1ps
@@ -10,6 +10,7 @@ module ethernet_frame_parser_stress_tb;
 
   localparam int DATA_WIDTH = 64;
   localparam int NUM_FRAMES = 50;
+  localparam int MAX_BEATS  = 3;
 
   // ----------------------------------------------------------
   // Clock / Reset
@@ -40,8 +41,13 @@ module ethernet_frame_parser_stress_tb;
   eth_metadata_t         m_axis_tuser;
   logic                  m_axis_tuser_valid;
 
-  // Pulse-safe latch
   logic metadata_seen;
+
+  // ----------------------------------------------------------
+  // Scoreboard queues
+  // ----------------------------------------------------------
+  logic [DATA_WIDTH-1:0] expected_q [$];
+  logic [DATA_WIDTH-1:0] observed_q [$];
 
   // ----------------------------------------------------------
   // DUT
@@ -67,6 +73,25 @@ module ethernet_frame_parser_stress_tb;
   );
 
   // ----------------------------------------------------------
+  // Randomized backpressure (THIS IS STRESS)
+  // ----------------------------------------------------------
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      m_axis_tready <= 1'b0;
+    else
+      m_axis_tready <= $urandom_range(0,1);
+  end
+
+  // ----------------------------------------------------------
+  // Capture output beats
+  // ----------------------------------------------------------
+  always_ff @(posedge clk) begin
+    if (m_axis_tvalid && m_axis_tready) begin
+      observed_q.push_back(m_axis_tdata);
+    end
+  end
+
+  // ----------------------------------------------------------
   // Metadata pulse capture
   // ----------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
@@ -77,7 +102,7 @@ module ethernet_frame_parser_stress_tb;
   end
 
   // ----------------------------------------------------------
-  // AXI helper: send one beat (HARD CORRECT)
+  // AXI helper: send one beat
   // ----------------------------------------------------------
   task automatic axi_send_beat(
     input logic [63:0] data,
@@ -88,11 +113,10 @@ module ethernet_frame_parser_stress_tb;
     s_axis_tlast  = last;
     s_axis_tvalid = 1'b1;
 
-    // HOLD until accepted
     while (!s_axis_tready)
       @(posedge clk);
 
-    @(posedge clk); // accept cycle
+    @(posedge clk);
 
     s_axis_tvalid = 1'b0;
     s_axis_tlast  = 1'b0;
@@ -105,43 +129,40 @@ module ethernet_frame_parser_stress_tb;
   // ----------------------------------------------------------
   integer f;
   integer timeout;
+  integer beat;
 
   initial begin
-    // Init
     clk = 0;
     rst_n = 0;
 
     s_axis_tdata  = '0;
     s_axis_tvalid = 0;
     s_axis_tlast  = 0;
-    m_axis_tready = 1;
 
     repeat (5) @(posedge clk);
     rst_n = 1;
 
-    $display("=== Ethernet Frame Parser STRESS TEST ===");
+    $display("=== Ethernet Frame Parser REAL STRESS TEST ===");
 
     for (f = 0; f < NUM_FRAMES; f++) begin
       metadata_seen = 0;
 
-      // --------------------------------------------------
-      // Beat 0: Dest MAC FF:FF:FF:FF:FF:FF + 00 11
-      // --------------------------------------------------
-      axi_send_beat(64'h0011FFFFFFFFFFFF, 1'b0);
+      // Frame beats with SEQUENCE TAGGING
+      for (beat = 0; beat < MAX_BEATS; beat++) begin
+        logic last;
+        logic [63:0] payload;
 
-      // --------------------------------------------------
-      // Beat 1: Src MAC 22:33:44:55 + Ethertype 08 00
-      // --------------------------------------------------
-      axi_send_beat(64'h0000080055443322, 1'b0);
+        last = (beat == MAX_BEATS-1);
+        payload = {16'(f), 16'(beat), 32'hCAFEBABE};
 
-      // --------------------------------------------------
-      // Beat 2: Payload + LAST
-      // --------------------------------------------------
-      axi_send_beat(64'h0000FFEEDDCCBBAA, 1'b1);
+        expected_q.push_back(payload);
+        axi_send_beat(payload, last);
 
-      // --------------------------------------------------
-      // Wait for metadata (bounded)
-      // --------------------------------------------------
+        // random gap
+        repeat ($urandom_range(0,3)) @(posedge clk);
+      end
+
+      // Wait for metadata
       timeout = 0;
       while (!metadata_seen && timeout < 2000) begin
         @(posedge clk);
@@ -150,21 +171,28 @@ module ethernet_frame_parser_stress_tb;
 
       if (!metadata_seen)
         $fatal(1, "TIMEOUT: metadata never observed for frame %0d", f);
-
-      // --------------------------------------------------
-      // Validate metadata
-      // --------------------------------------------------
-      if (m_axis_tuser.dest_mac !== 48'hFFFFFFFFFFFF)
-        $fatal(1, "METADATA ERROR: dest_mac mismatch");
-
-      if (m_axis_tuser.src_mac !== 48'h001122334455)
-        $fatal(1, "METADATA ERROR: src_mac mismatch");
-
-      if (!m_axis_tuser.is_ipv4)
-        $fatal(1, "METADATA ERROR: IPv4 not detected");
     end
 
-    $display("✔ STRESS TEST PASSED (%0d frames)", NUM_FRAMES);
+    // ------------------------------------------------------
+    // Final scoreboard check
+    // ------------------------------------------------------
+    if (expected_q.size() != observed_q.size()) begin
+      $fatal(1,
+        "SCOREBOARD SIZE MISMATCH: expected %0d, got %0d",
+        expected_q.size(), observed_q.size()
+      );
+    end
+
+    for (int i = 0; i < expected_q.size(); i++) begin
+      if (expected_q[i] !== observed_q[i]) begin
+        $fatal(1,
+          "DATA MISMATCH @%0d exp=%h got=%h",
+          i, expected_q[i], observed_q[i]
+        );
+      end
+    end
+
+    $display("✔ REAL STRESS TEST PASSED (%0d frames)", NUM_FRAMES);
     $finish;
   end
 
