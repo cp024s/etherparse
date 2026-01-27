@@ -28,5 +28,7 @@ full:
 all: unit integration full
 
 clean:
-	@rm -rf build
+	@rm -rf build *.jou *.log dfx_runtime.txt .Xil vivado_sim/
+	clear
 	@echo "Cleaned build directory"
+	@echo "Removed log and journal files"
