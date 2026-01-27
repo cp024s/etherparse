@@ -1,6 +1,6 @@
 // ============================================================
 // Testbench: frame_control_fsm_tb
-// Purpose  : Unit test for frame_control_fsm
+// Purpose  : Unit test for frame_control_fsm (Moore FSM aware)
 // ============================================================
 
 `timescale 1ns/1ps
@@ -48,7 +48,7 @@ module frame_control_fsm_tb;
     $display("=== frame_control_fsm UNIT TEST ===");
 
     // --------------------------------------------------
-    // Start frame
+    // Start frame (IDLE -> HEADER)
     // --------------------------------------------------
     beat_accept = 1;
     @(posedge clk);
@@ -57,6 +57,8 @@ module frame_control_fsm_tb;
     if (!frame_start)
       $fatal(1, "FAIL: frame_start not asserted on first beat");
 
+    // FSM enters HEADER on NEXT cycle
+    @(posedge clk);
     if (!in_header)
       $fatal(1, "FAIL: not in HEADER state after frame start");
 
@@ -67,11 +69,12 @@ module frame_control_fsm_tb;
     @(posedge clk);
     beat_accept = 0;
 
+    @(posedge clk);
     if (!in_header)
       $fatal(1, "FAIL: HEADER state lost too early");
 
     // --------------------------------------------------
-    // Header completes
+    // Header completes (HEADER -> PAYLOAD)
     // --------------------------------------------------
     header_done = 1;
     beat_accept = 1;
@@ -79,6 +82,7 @@ module frame_control_fsm_tb;
     beat_accept = 0;
     header_done = 0;
 
+    @(posedge clk);
     if (!in_payload)
       $fatal(1, "FAIL: did not transition to PAYLOAD");
 
@@ -89,11 +93,12 @@ module frame_control_fsm_tb;
     @(posedge clk);
     beat_accept = 0;
 
+    @(posedge clk);
     if (!in_payload)
       $fatal(1, "FAIL: PAYLOAD state lost unexpectedly");
 
     // --------------------------------------------------
-    // End frame
+    // End frame (PAYLOAD -> IDLE)
     // --------------------------------------------------
     tlast = 1;
     beat_accept = 1;
@@ -104,6 +109,7 @@ module frame_control_fsm_tb;
     if (!frame_end)
       $fatal(1, "FAIL: frame_end not asserted on tlast");
 
+    @(posedge clk);
     if (in_header || in_payload)
       $fatal(1, "FAIL: FSM did not return to IDLE");
 
