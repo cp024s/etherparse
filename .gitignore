@@ -44,6 +44,9 @@ Thumbs.db
 *.sim/
 *.hw/
 *.ip_user_files/
+dfx_runtime.txt
+.Xil
+vivado_sim/
 
 # ============================================================
 # Questa / ModelSim
