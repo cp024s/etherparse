@@ -1,65 +1,55 @@
 // ============================================================
 // Module: byte_counter
-// Purpose: Byte-accurate position tracking (timing-correct)
+// Purpose:
+//  - Count bytes consumed per frame
+//  - Assert header_done when header byte threshold is reached
+//  - Beat-driven (uses beat_accept)
 // ============================================================
 
 `timescale 1ns/1ps
 
 module byte_counter #(
-  parameter int DATA_WIDTH = 64,
-  parameter int L2_HEADER_MAX_BYTES = 18
+  parameter int DATA_WIDTH   = 64,
+  parameter int HEADER_BYTES = 18
 )(
   input  logic clk,
   input  logic rst_n,
 
-  // Control inputs
-  input  logic beat_accept,
-  input  logic frame_start,
-  input  logic frame_end,
+  // Control
+  input  logic beat_accept,   // asserted when a data beat is consumed
+  input  logic frame_start,   // single-cycle pulse at start of frame
 
-  // Outputs
-  output logic [$clog2(L2_HEADER_MAX_BYTES + DATA_WIDTH/8 + 1)-1:0] byte_count,
-  output logic in_l2_header,
+  // Status
   output logic header_done
 );
 
-  // ----------------------------------------------------------
-  // Local parameters
-  // ----------------------------------------------------------
   localparam int BYTES_PER_BEAT = DATA_WIDTH / 8;
 
-  // ----------------------------------------------------------
-  // Next-byte calculation (CRITICAL)
-  // ----------------------------------------------------------
-  logic [$clog2(L2_HEADER_MAX_BYTES + DATA_WIDTH/8 + 1)-1:0] byte_count_next;
+  logic [$clog2(HEADER_BYTES+BYTES_PER_BEAT):0] byte_count;
+  logic [$clog2(HEADER_BYTES+BYTES_PER_BEAT):0] next_count;
 
-  always_comb begin
-    if (frame_start)
-      byte_count_next = '0;
-    else if (beat_accept && !frame_end)
-      byte_count_next = byte_count + BYTES_PER_BEAT;
-    else
-      byte_count_next = byte_count;
-  end
-
-  // ----------------------------------------------------------
-  // Byte counter register
-  // ----------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n)
+    if (!rst_n) begin
       byte_count <= '0;
-    else
-      byte_count <= byte_count_next;
+      header_done <= 1'b0;
+    end else begin
+      // Reset on new frame
+      if (frame_start) begin
+        byte_count  <= '0;
+        header_done <= 1'b0;
+      end
+      // Count bytes on accepted beats
+      else if (beat_accept && !header_done) begin
+        next_count = byte_count + BYTES_PER_BEAT;
+
+        if (next_count >= HEADER_BYTES) begin
+          byte_count  <= HEADER_BYTES;
+          header_done <= 1'b1;
+        end else begin
+          byte_count <= next_count;
+        end
+      end
+    end
   end
-
-  // ----------------------------------------------------------
-  // Header window indicator
-  // ----------------------------------------------------------
-  assign in_l2_header = (byte_count < L2_HEADER_MAX_BYTES);
-
-  // ----------------------------------------------------------
-  // Header completion (TIMING-CORRECT)
-  // ----------------------------------------------------------
-  assign header_done = (byte_count_next >= L2_HEADER_MAX_BYTES);
 
 endmodule
