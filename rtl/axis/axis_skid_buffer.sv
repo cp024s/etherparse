@@ -59,4 +59,12 @@ module axis_skid_buffer #(
         end
     end
 
+    always_ff @(posedge clk) begin
+  if (m_tvalid && m_tready) begin
+    $display("[%0t] SKID forward: data=%h last=%b",
+             $time, m_tdata, m_tlast);
+  end
+end
+
+
 endmodule

@@ -1,39 +1,41 @@
 // ============================================================
 // Module: vlan_resolver
-// Purpose: Detect and resolve single 802.1Q VLAN tag (portable)
+// Purpose:
+//  - Detect VLAN
+//  - Resolve final ethertype
 // ============================================================
 
 `timescale 1ns/1ps
+import eth_parser_pkg::*;
 
 module vlan_resolver (
-  input  logic [17:0][7:0] header_bytes,
-  input  logic [15:0]       ethertype_raw,
-  input  logic              fields_valid,
+  input  logic [14*8-1:0] header_bytes,
+  input  ethertype_t      ethertype_raw,
+  input  logic            fields_valid,
 
-  output logic              vlan_present,
-  output logic [11:0]       vlan_id,
-  output logic [15:0]       resolved_ethertype,
-  output logic [4:0]        l2_header_len,
-  output logic              vlan_valid
+  output logic            vlan_present,
+  output logic [11:0]     vlan_id,
+  output ethertype_t     resolved_ethertype,
+  output logic [4:0]      l2_header_len,
+  output logic            vlan_valid
 );
 
-  // VLAN detection
-  assign vlan_present = fields_valid && (ethertype_raw == 16'h8100);
+  localparam ethertype_t ETH_VLAN = 16'h8100;
 
-  // VLAN ID (lower 12 bits of TCI)
-  assign vlan_id = vlan_present
-    ? { header_bytes[14][3:0], header_bytes[15] }
-    : 12'd0;
+  // VLAN tag layout (bytes 14–17 if present)
+  wire [15:0] tci        = header_bytes[14*8 +: 16];
+  wire [15:0] vlan_type = header_bytes[16*8 +: 16];
 
-  // Resolved ethertype
-  assign resolved_ethertype = vlan_present
-    ? { header_bytes[16], header_bytes[17] }
-    : ethertype_raw;
+  assign vlan_present = fields_valid && (ethertype_raw == ETH_VLAN);
 
-  // Header length
-  assign l2_header_len = vlan_present ? 5'd18 : 5'd14;
+  assign vlan_id = vlan_present ? tci[11:0] : 12'd0;
 
-  // Valid follows fields_valid
+  assign resolved_ethertype =
+    vlan_present ? vlan_type : ethertype_raw;
+
+  assign l2_header_len =
+    vlan_present ? 5'd18 : 5'd14;
+
   assign vlan_valid = fields_valid;
 
 endmodule

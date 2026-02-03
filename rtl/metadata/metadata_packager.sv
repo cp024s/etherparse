@@ -1,7 +1,7 @@
 // ============================================================
 // Module: metadata_packager
-// Purpose: Pure metadata aggregation
-//          Emits metadata on proto_valid ONLY
+// Purpose:
+//  - Emit metadata exactly ONCE per frame
 // ============================================================
 
 `timescale 1ns/1ps
@@ -11,14 +11,13 @@ module metadata_packager (
   input  logic         clk,
   input  logic         rst_n,
 
-  // Frame lifecycle (currently unused but future-safe)
+  // Frame lifecycle
   input  logic         frame_start,
   input  logic         frame_end,
 
-  // Parsed fields (assumed stable when proto_valid is high)
+  // Parsed fields
   input  mac_addr_t    dest_mac,
   input  mac_addr_t    src_mac,
-
   input  logic         vlan_present,
   input  logic [11:0]  vlan_id,
   input  ethertype_t   resolved_ethertype,
@@ -37,16 +36,23 @@ module metadata_packager (
 );
 
   eth_metadata_t metadata_r;
+  logic          emitted;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       metadata_r     <= '0;
       metadata_valid <= 1'b0;
+      emitted        <= 1'b0;
     end else begin
       metadata_valid <= 1'b0;
 
-      // Emit metadata exactly once per frame
-      if (proto_valid) begin
+      // Reset emission state at frame end
+      if (frame_end) begin
+        emitted <= 1'b0;
+      end
+
+      // Emit exactly once per frame
+      if (proto_valid && !emitted) begin
         metadata_r.dest_mac      <= dest_mac;
         metadata_r.src_mac       <= src_mac;
         metadata_r.ethertype     <= resolved_ethertype;
@@ -59,7 +65,8 @@ module metadata_packager (
         metadata_r.is_arp        <= is_arp;
         metadata_r.is_unknown    <= is_unknown;
 
-        metadata_valid           <= 1'b1;
+        metadata_valid <= 1'b1;
+        emitted        <= 1'b1;
       end
     end
   end

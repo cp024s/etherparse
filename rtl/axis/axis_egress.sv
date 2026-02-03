@@ -37,4 +37,12 @@ module axis_egress #(
 
   assign s_tready = m_tready;
 
+  always_ff @(posedge clk) begin
+  if (m_tvalid && m_tready) begin
+    $display("[%0t] EGRESS send: data=%h last=%b",
+             $time, m_tdata, m_tlast);
+  end
+end
+
+
 endmodule

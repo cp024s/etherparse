@@ -2,8 +2,7 @@
 // Module: byte_counter
 // Purpose:
 //  - Count bytes consumed per frame
-//  - Assert header_done when header byte threshold is reached
-//  - Beat-driven (uses beat_accept)
+//  - Assert header_done exactly once
 // ============================================================
 
 `timescale 1ns/1ps
@@ -15,39 +14,29 @@ module byte_counter #(
   input  logic clk,
   input  logic rst_n,
 
-  // Control
-  input  logic beat_accept,   // asserted when a data beat is consumed
-  input  logic frame_start,   // single-cycle pulse at start of frame
+  input  logic beat_accept,
+  input  logic frame_start,
 
-  // Status
   output logic header_done
 );
 
   localparam int BYTES_PER_BEAT = DATA_WIDTH / 8;
+  localparam int CNT_W = $clog2(HEADER_BYTES + BYTES_PER_BEAT + 1);
 
-  logic [$clog2(HEADER_BYTES+BYTES_PER_BEAT):0] byte_count;
-  logic [$clog2(HEADER_BYTES+BYTES_PER_BEAT):0] next_count;
+  logic [CNT_W-1:0] byte_count;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       byte_count <= '0;
       header_done <= 1'b0;
     end else begin
-      // Reset on new frame
       if (frame_start) begin
         byte_count  <= '0;
         header_done <= 1'b0;
-      end
-      // Count bytes on accepted beats
-      else if (beat_accept && !header_done) begin
-        next_count = byte_count + BYTES_PER_BEAT;
-
-        if (next_count >= HEADER_BYTES) begin
-          byte_count  <= HEADER_BYTES;
+      end else if (beat_accept && !header_done) begin
+        byte_count <= byte_count + BYTES_PER_BEAT;
+        if (byte_count + BYTES_PER_BEAT >= HEADER_BYTES)
           header_done <= 1'b1;
-        end else begin
-          byte_count <= next_count;
-        end
       end
     end
   end
