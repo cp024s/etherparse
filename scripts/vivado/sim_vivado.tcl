@@ -1,23 +1,26 @@
-# ============================================================
-# Vivado RTL Simulation Script
-# ============================================================
+create_project eth_parser_sim ./vivado_sim -part xc7a200tfbg484-1 -force
 
-set proj_name ethernet_parser_sim
-set build_dir build/vivado/sim
+# === Add RTL in correct order ===
+add_files pkg/eth_parser_pkg.sv
 
-file mkdir $build_dir
-create_project $proj_name $build_dir -part xc7a35tcsg324-1 -force
+add_files rtl/axis/axis_ingress.sv
+add_files rtl/axis/axis_egress.sv
+add_files rtl/axis/axis_skid_buffer.sv
 
-# Add RTL
-add_files [glob -nocomplain pkg/*.sv]
-add_files [glob -nocomplain rtl/**/*.sv]
+add_files rtl/parser/frame_control_fsm.sv
+add_files rtl/parser/byte_counter.sv
+add_files rtl/parser/header_shift_register.sv
+add_files rtl/parser/eth_header_parser.sv
+add_files rtl/parser/vlan_resolver.sv
+add_files rtl/parser/protocol_classifier.sv
 
-# Add testbench
-add_files -fileset sim_1 [glob -nocomplain tb/integration/*.sv]
+add_files rtl/metadata/metadata_packager.sv
 
-set_property top ethernet_frame_parser_stress_tb [get_filesets sim_1]
+add_files rtl/ethernet_frame_parser.sv
 
-update_compile_order -fileset sim_1
+# === Set top ===
+set_property top ethernet_frame_parser [current_fileset]
 
-launch_simulation
-run all
+# === Elaboration / syntax check only ===
+update_compile_order -fileset sources_1
+check_syntax

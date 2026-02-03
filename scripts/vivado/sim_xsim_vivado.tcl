@@ -1,20 +1,10 @@
 # ============================================================
-# Vivado Synthesis Script
-# Project: Ethernet_parser_SS
+# Vivado Behavioral Simulation (xsim)
 # ============================================================
 
-set proj_name ethernet_parser_synth
-set build_dir build/vivado/synth
+create_project eth_parser_sim ./vivado_sim -part xc7a200tfbg484-1 -force
 
-file mkdir $build_dir
-
-# Create project for correct FPGA
-create_project $proj_name $build_dir -part xc7a200tfbg484-1 -force
-
-# Disable auto hierarchy replacement
-set_property source_mgmt_mode None [current_project]
-
-# Add RTL in correct order
+# === Add RTL (same order as syntax check) ===
 add_files pkg/eth_parser_pkg.sv
 
 add_files rtl/axis/axis_ingress.sv
@@ -29,22 +19,19 @@ add_files rtl/parser/vlan_resolver.sv
 add_files rtl/parser/protocol_classifier.sv
 
 add_files rtl/metadata/metadata_packager.sv
-
 add_files rtl/ethernet_frame_parser.sv
 
-# Set correct top
+# === Add TESTBENCH ===
+add_files -fileset sim_1 tb/integration/parser_pipeline_tb.sv
+
+# === Set tops ===
 set_property top ethernet_frame_parser [current_fileset]
+set_property top parser_pipeline_tb [get_filesets sim_1]
 
-# Compile order
+# === Compile & simulate ===
 update_compile_order -fileset sources_1
+update_compile_order -fileset sim_1
 
-# Run synthesis
-launch_runs synth_1 -jobs 4
-wait_on_run synth_1
-
-# Open synthesized design (important!)
-open_run synth_1
-
-# Reports
-report_utilization -file $build_dir/utilization.rpt
-report_timing_summary -file $build_dir/timing_summary.rpt
+launch_simulation
+run all
+quit
