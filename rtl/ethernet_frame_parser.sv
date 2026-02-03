@@ -117,6 +117,8 @@ module ethernet_frame_parser #(
   logic        fields_valid;
 
   eth_header_parser u_eth_hdr (
+    .clk           (clk),
+    .rst_n         (rst_n),
     .header_bytes  (header_bytes),
     .header_valid  (header_valid),
     .dest_mac      (dest_mac),
