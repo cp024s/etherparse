@@ -2,8 +2,7 @@
 # Ethernet Parser SS - Unified Makefile
 # Supports:
 #  - Icarus simulation
-#  - Vivado batch mode
-#  - Vivado GUI mode
+#  - Vivado batch / tcl / gui via MODE override
 #  - OS auto-detection
 # ============================================================
 
@@ -43,6 +42,11 @@ else
 endif
 
 # ----------------------------
+# Vivado Mode (override from CLI)
+# ----------------------------
+MODE ?= batch
+
+# ----------------------------
 # Paths
 # ----------------------------
 BUILD_DIR  := build
@@ -54,22 +58,22 @@ TCL_SCRIPT := scripts/vivado_flow.tcl
 .PHONY: help
 help:
 	@echo ""
-	@echo "Detected OS: $(DETECTED_OS)"
+	@echo "Detected OS : $(DETECTED_OS)"
+	@echo "Vivado MODE : $(MODE)"
 	@echo ""
 	@echo "Targets:"
 	@echo "  sim-iverilog   - Run Icarus simulation"
 	@echo "  vivado-gui     - Launch Vivado GUI"
-	@echo "  vivado-sim     - Vivado XSim (batch)"
+	@echo "  vivado-sim     - Vivado XSim (batch/tcl/gui)"
 	@echo "  vivado-synth   - Vivado synthesis"
 	@echo "  vivado-impl    - Vivado implementation"
 	@echo "  vivado-bit     - Generate bitstream"
 	@echo "  vivado-all     - Full Vivado flow"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make sim-iverilog"
-	@echo "  make vivado-gui"
-	@echo "  make vivado-all"
-	@echo "  make vivado-synth OS=windows"
+	@echo "  make vivado-impl"
+	@echo "  make vivado-impl MODE=tcl"
+	@echo "  make vivado-all  MODE=gui"
 
 # ============================================================
 # Icarus Simulation
@@ -89,34 +93,34 @@ sim-iverilog:
 	vvp $(BUILD_DIR)/icarus_sim.out
 
 # ============================================================
-# Vivado GUI (interactive)
+# Vivado GUI (interactive only)
 # ============================================================
 .PHONY: vivado-gui
 vivado-gui:
 	$(VIVADO)
 
 # ============================================================
-# Vivado Batch Targets
+# Vivado Batch / TCL / GUI Targets
 # ============================================================
 .PHONY: vivado-sim
 vivado-sim:
-	$(VIVADO) -mode batch -source $(TCL_SCRIPT) -tclargs sim
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs sim
 
 .PHONY: vivado-synth
 vivado-synth:
-	$(VIVADO) -mode batch -source $(TCL_SCRIPT) -tclargs synth
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs synth
 
 .PHONY: vivado-impl
 vivado-impl:
-	$(VIVADO) -mode batch -source $(TCL_SCRIPT) -tclargs impl
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs impl
 
 .PHONY: vivado-bit
 vivado-bit:
-	$(VIVADO) -mode batch -source $(TCL_SCRIPT) -tclargs bit
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs bit
 
 .PHONY: vivado-all
 vivado-all:
-	$(VIVADO) -mode batch -source $(TCL_SCRIPT) -tclargs all
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs all
 
 # ============================================================
 # Cleanup
@@ -124,7 +128,7 @@ vivado-all:
 .PHONY: clean
 clean:
 	$(RM) $(BUILD_DIR)
-	rm -rf .Xil *.jou .Xil *.log *.str
+	rm -rf .Xil *.jou *.log *.str
+	rm -rf *.txt
 	rm -rf vivado_sim/
-
 	clear
