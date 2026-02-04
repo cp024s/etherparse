@@ -42,6 +42,7 @@ module ethernet_frame_parser #(
   mac_addr_t   src_mac;
   ethertype_t  ethertype_raw;
 
+  logic fields_valid;
 
   // ==========================================================
   // AXI ingress
@@ -153,7 +154,6 @@ eth_header_parser u_eth (
   .ethertype_raw (ethertype_raw),
   .fields_valid  (fields_valid)
 );
-
   
   // ==========================================================
   // VLAN resolver
@@ -183,40 +183,45 @@ vlan_resolver u_vlan (
   logic is_ipv4, is_ipv6, is_arp, is_unknown;
   logic proto_valid;
 
-  protocol_classifier u_proto (
-    .resolved_ethertype (resolved_ethertype),
-    .vlan_valid         (vlan_valid),
-    .is_ipv4            (is_ipv4),
-    .is_ipv6            (is_ipv6),
-    .is_arp             (is_arp),
-    .is_unknown         (is_unknown),
-    .proto_valid        (proto_valid)
-  );
+protocol_classifier u_proto (
+  .resolved_ethertype (resolved_ethertype),
+  .vlan_valid         (vlan_valid),
+
+  .is_ipv4            (is_ipv4),
+  .is_ipv6            (is_ipv6),
+  .is_arp             (is_arp),
+  .is_unknown         (is_unknown),
+
+  .proto_valid        (proto_valid)
+);
+
 
   // ==========================================================
   // Metadata packager
   // ==========================================================
   eth_metadata_t metadata_bus;
 
-  metadata_packager u_meta (
-    .clk                (clk),
-    .rst_n              (rst_n),
-    .frame_start        (frame_start),
-    .frame_end          (frame_end),
-    .dest_mac           (dest_mac),
-    .src_mac            (src_mac),
-    .vlan_present       (vlan_present),
-    .vlan_id            (vlan_id),
-    .resolved_ethertype (resolved_ethertype),
-    .l2_header_len      (l2_header_len),
-    .proto_valid        (proto_valid),
-    .is_ipv4            (is_ipv4),
-    .is_ipv6            (is_ipv6),
-    .is_arp             (is_arp),
-    .is_unknown         (is_unknown),
-    .metadata           (metadata_bus),
-    .metadata_valid     (m_axis_tuser_valid)
-  );
+metadata_packager u_meta (
+  .clk            (clk),
+  .rst_n          (rst_n),
+  .frame_start    (frame_start),
+  .frame_end      (frame_end),
+
+  .dest_mac       (dest_mac),
+  .src_mac        (src_mac),
+  .vlan_present   (vlan_present),
+  .vlan_id        (vlan_id),
+
+  .proto_valid    (proto_valid),
+  .is_ipv4        (is_ipv4),
+  .is_ipv6        (is_ipv6),
+  .is_arp         (is_arp),
+  .is_unknown     (is_unknown),
+
+  .metadata       (metadata_bus),
+  .metadata_valid (m_axis_tuser_valid)
+);
+
 
   assign m_axis_tuser = metadata_bus;
 
