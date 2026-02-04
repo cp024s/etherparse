@@ -735,13 +735,14 @@ make vivado-all PART=xc7a200tfbg484-1
 
 ### Supported Overrides
 
-| Parameter    | Meaning                              |
-| ------------ | ------------------------------------ |
-| `DATA_WIDTH` | AXI data width (default: 64)         |
-| `USER_WIDTH` | Metadata sideband width              |
-| `PART`       | Target FPGA part                     |
-| `BUILD_DIR`  | Output directory (default: `build/`) |
-| `SIM_TIME`   | Simulation runtime limit             |
+| Parameter    | Meaning                                 |
+| ------------ | --------------------------------------- |
+| `DATA_WIDTH` | AXI data width (default: 64)            |
+| `USER_WIDTH` | Metadata sideband width                 |
+| `PART`       | Target FPGA part                        |
+| `BUILD_DIR`  | Output directory (default: `build/`)    |
+| `SIM_TIME`   | Simulation runtime limit                |
+| `MODE`       | Vivado operation mode (GUI/tcl/default) |
 
 All generated artifacts are placed under `/build` to keep the repository clean.
 
