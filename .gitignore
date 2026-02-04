@@ -24,6 +24,7 @@ eth_parser_sim
 *~
 .Xil
 dfx_runtime.txt
+clockInfo.txt
 
 # ============================================================
 # OS-specific
@@ -46,6 +47,7 @@ Thumbs.db
 *.sim/
 *.hw/
 *.ip_user_files/
+vivado_sim/
 
 # ============================================================
 # Questa / ModelSim
