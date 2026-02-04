@@ -55,6 +55,15 @@ If any of these break, the design is wrong.
 
 ## 🏗 High-Level Architecture
 
+<p align="center">
+  <img src="/docs/assets/architecture_diagram.png" width="800">
+</p>
+
+<p align="center">
+  <em>Figure 1: High-level AXI-Stream Ethernet frame parser architecture showing datapath, control flow, and metadata emission.</em>
+</p>
+
+
 ```
 AXI4-Stream In
     │
@@ -399,6 +408,14 @@ FSM completeness and legality are enforced via assertions.
 ---
 
 ### Header Capture Strategy
+
+<p align="center">
+  <img src="/docs/assets/flow_daigram.png" width="700">
+</p>
+
+<p align="center">
+  <em>Figure 2: Semantic control path illustrating AXI beat acceptance, skid buffering, byte counting, and parser consumption.</em>
+</p>
 
 * Header bytes are captured using a **shift-based register**
 * Byte indexing is **counter-driven**, not data-dependent
