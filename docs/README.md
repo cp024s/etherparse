@@ -587,6 +587,11 @@ If any of these fail, the test fails. No silent passes.
 * Icarus Verilog
 * Xilinx Vivado (2023+ recommended)
 
+> [!NOTE]
+> All simulations, scripts, and build flows in this repository have been **developed and tested on Windows environments**.
+>
+> While the design itself is OS-agnostic, behavior on **Linux or macOS hosts has not been formally validated**.  
+> Minor path, shell, or toolchain differences may require user-side adjustments.
 
 ---
 
