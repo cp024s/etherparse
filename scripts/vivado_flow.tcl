@@ -1,21 +1,40 @@
 # ============================================================
 # Vivado Unified Flow Script
-# Board: ALINX AX7203
+# Board : ALINX AX7203
 # Device: xc7a200tfbg484-1
 # ============================================================
 
-# ----------------------------
+# ============================================================
 # Args
-# ----------------------------
-set MODE [lindex $argv 0]
+# ============================================================
+
+set MODE       [lindex $argv 0]
+set TOP_MODULE [lindex $argv 1]
+set XDC_FILE   [lindex $argv 2]
+
 if {$MODE eq ""} {
   puts "ERROR: No mode specified (sim/synth/impl/bit/all)"
   exit 1
 }
 
-# ----------------------------
+if {$TOP_MODULE eq ""} {
+  set TOP_MODULE top_ax7203
+}
+
+if {$XDC_FILE eq ""} {
+  set XDC_FILE ./constraints/ax7203.xdc
+}
+
+puts "--------------------------------------------"
+puts "Flow Mode     : $MODE"
+puts "Top Module    : $TOP_MODULE"
+puts "Constraints   : $XDC_FILE"
+puts "--------------------------------------------"
+
+# ============================================================
 # Project config
-# ----------------------------
+# ============================================================
+
 set PROJ_NAME ethernet_parser_ss
 set PROJ_DIR  build/vivado
 set PART      xc7a200tfbg484-1
@@ -23,31 +42,59 @@ set PART      xc7a200tfbg484-1
 file mkdir $PROJ_DIR
 create_project $PROJ_NAME $PROJ_DIR -part $PART -force
 
-# ❗ DO NOT set target_language
-# Vivado infers SystemVerilog from .sv files
+# ------------------------------------------------------------
+# CRITICAL: Force manual compile order (prevents top override)
+# ------------------------------------------------------------
+set_property source_mgmt_mode None [current_project]
 
-# ----------------------------
-# RTL sources (synthesizable)
-# ----------------------------
-add_files -norecurse [glob ./pkg/*.sv]
-add_files -norecurse [glob ./rtl/axis/*.sv]
-add_files -norecurse [glob ./rtl/parser/*.sv]
-add_files -norecurse [glob ./rtl/metadata/*.sv]
+
+
+# ------------------------------------------------------------
+# RTL sources (STRICT, NO WILDCARDS)
+# ------------------------------------------------------------
+
+# Packages
+add_files -norecurse ./pkg/eth_parser_pkg.sv
+
+# AXI infrastructure
+add_files -norecurse ./rtl/axis/axis_ingress.sv
+add_files -norecurse ./rtl/axis/axis_skid_buffer.sv
+add_files -norecurse ./rtl/axis/axis_egress.sv
+
+# Parser blocks
+add_files -norecurse ./rtl/parser/frame_control_fsm.sv
+add_files -norecurse ./rtl/parser/byte_counter.sv
+add_files -norecurse ./rtl/parser/header_shift_register.sv
+add_files -norecurse ./rtl/parser/eth_header_parser.sv
+add_files -norecurse ./rtl/parser/vlan_resolver.sv
+add_files -norecurse ./rtl/parser/protocol_classifier.sv
+
+# Metadata
+add_files -norecurse ./rtl/metadata/metadata_packager.sv
+
+# Core parser
 add_files -norecurse ./rtl/ethernet_frame_parser.sv
 
-# ----------------------------
+# BOARD TOP (ONLY PLACE WITH CLOCKING)
+add_files -norecurse ./rtl/top_ax7203.sv
+
+# ------------------------------------------------------------
 # Constraints
-# ----------------------------
-add_files -fileset constrs_1 ./constraints/ax7203.xdc
+# ------------------------------------------------------------
+add_files -fileset constrs_1 $XDC_FILE
 
-# ----------------------------
+
+# ------------------------------------------------------------
 # Simulation-only sources
-# ----------------------------
-add_files -fileset sim_1 -norecurse [glob ./tb/integration/*.sv]
-add_files -fileset sim_1 -norecurse [glob ./tb/assertions/*.sv]
+# ------------------------------------------------------------
+add_files -fileset sim_1 -norecurse ./tb/integration/axi_header_done_payload_tb.sv
+add_files -fileset sim_1 -norecurse ./tb/assertions/parser_runtime_checks.sv
 
+# Simulation top
 set_property top axi_header_done_payload_tb [get_filesets sim_1]
-set_property top ethernet_frame_parser [current_fileset]
+
+# Synthesis / implementation top
+set_property top $TOP_MODULE [current_fileset]
 
 update_compile_order -fileset sources_1
 update_compile_order -fileset sim_1
@@ -65,7 +112,7 @@ if {$MODE eq "sim"} {
 }
 
 puts "=== Running synthesis ==="
-synth_design -top ethernet_frame_parser -part $PART
+synth_design -top $TOP_MODULE -part $PART
 write_checkpoint -force $PROJ_DIR/post_synth.dcp
 report_utilization -file $PROJ_DIR/util_synth.rpt
 report_timing_summary -file $PROJ_DIR/timing_synth.rpt
