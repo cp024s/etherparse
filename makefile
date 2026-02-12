@@ -104,23 +104,29 @@ vivado-gui:
 # ============================================================
 .PHONY: vivado-sim
 vivado-sim:
-	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs sim
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) \
+	-tclargs sim $(TOP) $(XDC_FILE)
 
 .PHONY: vivado-synth
 vivado-synth:
-	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs synth
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) \
+	-tclargs synth $(TOP) $(XDC_FILE)
 
 .PHONY: vivado-impl
 vivado-impl:
-	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs impl
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) \
+	-tclargs impl $(TOP) $(XDC_FILE)
 
 .PHONY: vivado-bit
 vivado-bit:
-	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs bit
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) \
+	-tclargs bit $(TOP) $(XDC_FILE)
 
 .PHONY: vivado-all
 vivado-all:
-	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) -tclargs all
+	$(VIVADO) -mode $(MODE) -source $(TCL_SCRIPT) \
+	-tclargs all $(TOP) $(XDC_FILE)
+
 
 # ============================================================
 # Cleanup
