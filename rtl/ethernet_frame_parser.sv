@@ -11,30 +11,25 @@ module ethernet_frame_parser #(
   parameter int DATA_WIDTH = 64,
   parameter int USER_WIDTH = 1
 )(
-  // ==========================================================
-  // Differential system clock (from board)
-  // ==========================================================
-  input  logic sys_clk_p,
-  input  logic sys_clk_n,
+  // Fabric clock + reset (from top only)
+  input  logic clk,
+  input  logic rst,
 
-  // Active-low reset
-  input  logic rst_n,
-
-  // ==========================================================
   // AXI Stream input
-  // ==========================================================
   input  logic [DATA_WIDTH-1:0] s_axis_tdata,
   input  logic                  s_axis_tvalid,
   output logic                  s_axis_tready,
   input  logic                  s_axis_tlast,
 
-  // ==========================================================
   // AXI Stream output
-  // ==========================================================
   output logic [DATA_WIDTH-1:0] m_axis_tdata,
   output logic                  m_axis_tvalid,
   input  logic                  m_axis_tready,
   output logic                  m_axis_tlast,
+
+  // Parsed metadata
+  //output eth_metadata_t         m_axis_tuser,
+  //output logic                  m_axis_tuser_valid
 
   // ==========================================================
   // Parsed metadata
@@ -43,23 +38,6 @@ module ethernet_frame_parser #(
   output logic                  m_axis_tuser_valid
 );
 
-  // ==========================================================
-  // Clock generation
-  // ==========================================================
-  logic clk_100m;
-  logic clk_locked;
-
-  sys_clk_gen u_clk (
-    .sys_clk_p (sys_clk_p),
-    .sys_clk_n (sys_clk_n),
-    .rst_n     (rst_n),
-    .clk_100m  (clk_100m),
-    .locked    (clk_locked)
-  );
-
-  // Internal clean clock & reset
-  wire clk      = clk_100m;
-  wire rst_n_i  = rst_n & clk_locked;
 
   // ==========================================================
   // Parameters
@@ -85,7 +63,7 @@ module ethernet_frame_parser #(
     .USER_WIDTH(USER_WIDTH)
   ) u_ingress (
     .clk      (clk),
-    .rst_n    (rst_n_i),
+    .rst_n    (~rst),
 
     .s_tdata  (s_axis_tdata),
     .s_tvalid (s_axis_tvalid),
@@ -106,22 +84,25 @@ module ethernet_frame_parser #(
   logic [DATA_WIDTH-1:0] skid_tdata;
   logic                 skid_tvalid, skid_tready, skid_tlast;
 
-  axis_skid_buffer #(
-    .DATA_WIDTH(DATA_WIDTH)
-  ) u_skid (
-    .clk      (clk),
-    .rst_n    (rst_n_i),
+axis_skid_buffer #(
+  .DATA_WIDTH(DATA_WIDTH)
+) u_skid (
+  .clk      (clk),
+  .rst_n    (~rst),
 
-    .s_tdata  (in_tdata),
-    .s_tvalid (in_tvalid),
-    .s_tready (in_tready),
-    .s_tlast  (in_tlast),
+  .s_tdata  (in_tdata),
+  .s_tvalid (in_tvalid),
+  .s_tready (in_tready),
+  .s_tlast  (in_tlast),
+  .s_tuser  ('0),
 
-    .m_tdata  (skid_tdata),
-    .m_tvalid (skid_tvalid),
-    .m_tready (skid_tready),
-    .m_tlast  (skid_tlast)
-  );
+  .m_tdata  (skid_tdata),
+  .m_tvalid (skid_tvalid),
+  .m_tready (skid_tready),
+  .m_tlast  (skid_tlast),
+  .m_tuser  ()
+);
+
 
   // ==========================================================
   // Beat accept
@@ -138,7 +119,7 @@ module ethernet_frame_parser #(
 
   frame_control_fsm u_fsm (
     .clk         (clk),
-    .rst_n       (rst_n_i),
+    .rst_n       (~rst),
     .beat_accept (beat_accept),
     .tlast       (skid_tlast),
     .header_done (header_done),
@@ -156,7 +137,7 @@ module ethernet_frame_parser #(
     .HEADER_BYTES (HEADER_BYTES)
   ) u_byte_cnt (
     .clk         (clk),
-    .rst_n       (rst_n_i),
+    .rst_n       (~rst),
     .beat_accept (beat_accept),
     .frame_start (frame_start),
     .header_done (header_done)
@@ -173,7 +154,7 @@ module ethernet_frame_parser #(
     .HEADER_BYTES (HEADER_BYTES)
   ) u_hdr_shift (
     .clk          (clk),
-    .rst_n        (rst_n_i),
+    .rst_n        (~rst),
     .beat_accept  (beat_accept),
     .frame_start  (frame_start),
     .axis_tdata   (skid_tdata),
@@ -236,7 +217,7 @@ module ethernet_frame_parser #(
 
   metadata_packager u_meta (
     .clk            (clk),
-    .rst_n          (rst_n_i),
+    .rst_n          (~rst),
     .frame_start    (frame_start),
     .frame_end      (frame_end),
 
@@ -265,7 +246,7 @@ module ethernet_frame_parser #(
     .USER_WIDTH(USER_WIDTH)
   ) u_egress (
     .clk      (clk),
-    .rst_n    (rst_n_i),
+    .rst_n    (~rst),
 
     .s_tdata  (skid_tdata),
     .s_tvalid (skid_tvalid),
