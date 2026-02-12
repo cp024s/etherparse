@@ -1,39 +1,37 @@
 # ============================================================
-# AX7203 – Base Timing & Reset Constraints
+# AX7203 - Minimal Safe Bring-up Constraints
+# Device: xc7a200tfbg484-1
 # ============================================================
 
-# ------------------------------------------------------------
-# 1. SYSTEM CLOCK
-# ------------------------------------------------------------
-# NOTE:
-# AX7203 provides a DIFFERENTIAL system oscillator.
-# You MUST replace <SYS_CLK_P_PIN> / <SYS_CLK_N_PIN>
-# with actual package pins from the AX7203 manual.
-# ------------------------------------------------------------
-
-set_property PACKAGE_PIN <SYS_CLK_P_PIN> [get_ports sys_clk_p]
-set_property PACKAGE_PIN <SYS_CLK_N_PIN> [get_ports sys_clk_n]
-set_property IOSTANDARD DIFF_SSTL15 [get_ports {sys_clk_p sys_clk_n}]
-
-# AX7203 system oscillator is typically 200 MHz
-create_clock -name sys_clk_200m -period 5.000 [get_ports sys_clk_p]
+# ===============================
+# 200 MHz Differential Clock
+# ===============================
+set_property PACKAGE_PIN R4 [get_ports sys_clk_p]
+set_property PACKAGE_PIN T4 [get_ports sys_clk_n]
+set_property IOSTANDARD LVDS_25 [get_ports {sys_clk_p sys_clk_n}]
 
 # ------------------------------------------------------------
-# 2. RESET (ASYNC, ACTIVE-LOW)
+# Reset button (KEY1)
 # ------------------------------------------------------------
-
-set_property PACKAGE_PIN <RST_N_PIN> [get_ports rst_n]
+set_property PACKAGE_PIN J21 [get_ports rst_n]
 set_property IOSTANDARD LVCMOS33 [get_ports rst_n]
+set_property PULLUP true [get_ports rst_n]
 
-# Reset is async → remove from timing
+create_clock -period 5.000 -name sys_clk -waveform {0 2.5} [get_ports sys_clk_p]
+
+# ===============================
+# User LEDs (LVCMOS33)
+# ===============================
+set_property PACKAGE_PIN B13 [get_ports led[0]]
+set_property PACKAGE_PIN C13 [get_ports led[1]]
+set_property PACKAGE_PIN D14 [get_ports led[2]]
+set_property PACKAGE_PIN D15 [get_ports led[3]]
+
+set_property IOSTANDARD LVCMOS33 [get_ports {led[*]}]
+set_property DRIVE 8 [get_ports {led[*]}]
+set_property SLEW SLOW [get_ports {led[*]}]
+
+# ===============================
+# Reset false path (if async)
+# ===============================
 set_false_path -from [get_ports rst_n]
-
-# ------------------------------------------------------------
-# 3. SAFETY DEFAULTS (IMPORTANT)
-# ------------------------------------------------------------
-
-# Do NOT allow Vivado to silently infer clock groups
-set_clock_groups -asynchronous \
-  -group [get_clocks sys_clk_200m]
-
-# End of file
