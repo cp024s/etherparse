@@ -1,4 +1,16 @@
-# AXI-Stream Ethernet Frame Parser & Metadata Extraction Subsystem
+# <p align = centrer> AXI-Stream Ethernet Frame Parser & Metadata Extraction Subsystem </p>
+
+<div align="center">
+
+![HDL](https://img.shields.io/badge/HDL-SystemVerilog-blue) ![Interface](https://img.shields.io/badge/Interface-AXI4--Stream-informational) ![Protocols](https://img.shields.io/badge/Protocols-Ethernet%20II%20%7C%20VLAN%20%7C%20IPv4%20%7C%20ARP-success) 
+
+![FPGA](https://img.shields.io/badge/FPGA-AX7203%20(Artix--7)-blueviolet) ![Timing](https://img.shields.io/badge/Timing-Closed%20%40125MHz-brightgreen) ![Hardware Validation](https://img.shields.io/badge/Hardware-ILA%20Verified-success) ![AXI Compliance](https://img.shields.io/badge/AXI4--Stream-Compliant-success) ![Stage](https://img.shields.io/badge/Stage-FPGA%20Validated-9cf) 
+
+![Lint](https://img.shields.io/badge/Lint-Clean-brightgreen) ![Synthesis](https://img.shields.io/badge/Synthesis-Clean-brightgreen) ![Implementation](https://img.shields.io/badge/P&R-Passed-brightgreen)
+
+
+</div>
+
 
 ---
 
@@ -37,6 +49,17 @@ The subsystem does **not**:
 ---
 
 ## 3. System Partitioning
+
+### 3.2 System Partitioning Diagram
+
+<p align="center">
+  <img src="/docs/assets/system_partitioning.png" width="500">
+</p>
+
+<p align="center">
+  <em>Figure 1: Separation between board wrapper, parser core, and downstream logic.</em>
+</p>
+
 
 The project is structured into three isolated layers to enforce separation of concerns.
 
@@ -89,6 +112,15 @@ The subsystem is implemented under the following non-negotiable constraints:
 
 
 ## 5. High-Level Architecture
+
+<p align="center">
+  <img src="/docs/assets/architecture_diagram.png" width="700">
+</p>
+
+<p align="center">
+  <em>Figure 2 — High-level streaming architecture of the AXI-Stream Ethernet parser subsystem.</em>
+</p>
+
 
 The subsystem is implemented as a stage-partitioned streaming pipeline.  
 Each stage has a single functional responsibility and preserves AXI-Stream semantics.
@@ -194,6 +226,14 @@ Protocol violations are not corrected internally.
 
 ## 7. Metadata Sideband (TUSER)
 
+<p align="center">
+  <img src="/docs/assets/metadata_layout.png" width="500">
+</p>
+
+<p align="center">
+  <em>Figure 3 — layout of the metadata sideband structure.</em>
+</p>
+
 Metadata is emitted as a structured side-channel aligned with the payload stream.
 
 ```systemverilog
@@ -210,6 +250,16 @@ typedef struct packed {
   logic [4:0]  l2_header_len;
 } eth_metadata_t;
 ```
+
+<br>
+<p align="center">
+  <img src="/docs/assets/metadata_timing.png" width="600">
+</p>
+
+<p align="center">
+  <em>Figure 4 — Metadata validity timing aligned with the first payload beat.</em>
+</p>
+
 
 ### 7.1 Metadata Emission Contract
 
@@ -466,6 +516,14 @@ This prevents automatic hierarchy updates from overriding the specified top modu
 
 ## 15. FPGA Bring-Up & Debug
 
+<p align="center">
+  <img src="/docs/assets/ila_capture.png" width="700">
+</p>
+
+<p align="center">
+  <em>Figure 5 — Live ILA capture showing AXI streaming and metadata behavior on hardware.</em>
+</p>
+
 The design has been validated on:
 
 * ALINX AX7203 (Artix-7 `xc7a200tfbg484-1`)
@@ -561,47 +619,3 @@ No FPGA-only constructs are present in core logic.
 
 ---
 
-## 19. Roadmap
-
-Future enhancements may include:
-
-### 19.1 Protocol Extensions
-
-- IPv4 header parsing
-- TCP/UDP port extraction
-- Stacked VLAN (Q-in-Q)
-- MPLS classification
-
-### 19.2 Data-Plane Extensions
-
-- Rule-matching engine
-- Hardware firewall logic
-- Flow table lookup
-- Statistics counters
-
-### 19.3 Interface Extensions
-
-- Tri-Mode Ethernet MAC integration
-- RGMII/SGMII PHY integration
-- PCIe/XDMA streaming input
-
----
-
-## 20. Compliance & Determinism Statement
-
-This subsystem guarantees:
-
-- Deterministic metadata emission
-- AXI4-Stream protocol correctness
-- No data corruption under backpressure
-- Clean reset recovery
-
-The subsystem does not guarantee:
-
-- Packet integrity validation
-- Protection against malformed AXI traffic
-- Compliance enforcement on upstream violations
-
-All guarantees are limited strictly to defined interface contracts.
-
----
