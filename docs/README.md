@@ -1,120 +1,200 @@
-# <div align="center">AXI-Stream Ethernet Frame Parser & Metadata Extraction Subsystem</div>
-
-<div align="center">
-
-![HDL](https://img.shields.io/badge/HDL-SystemVerilog-blue) ![Interface](https://img.shields.io/badge/Interface-AXI4--Stream-informational) ![Protocols](https://img.shields.io/badge/Protocols-Ethernet%20II%20%7C%20VLAN%20%7C%20IPv4%20%7C%20ARP-success) ![Simulation](https://img.shields.io/badge/Simulation-Icarus%20Verilog%20%7C%20Vivado-orange) ![Automation](https://img.shields.io/badge/Automation-Makefile-green) ![Stage](https://img.shields.io/badge/Stage-Pre--Silicon-blueviolet) ![Status](https://img.shields.io/badge/Status-Stable-brightgreen)
-
-</div>
+# AXI-Stream Ethernet Frame Parser & Metadata Extraction Subsystem
 
 ---
 
-## 📌 Project Overview
+## 1. Purpose
 
-This repository implements a **cycle-accurate, streaming Ethernet frame parser subsystem** designed for **SoC-class RTL integration and pre-silicon verification**.
+This repository contains a streaming Ethernet Layer-2 frame parser implemented in SystemVerilog, designed for integration into FPGA- and SoC-class data-plane pipelines.
 
-The subsystem ingests raw Ethernet frames over **AXI4-Stream**, performs **single-pass Layer-2 header parsing**, resolves VLAN encapsulation, classifies the payload protocol, and emits:
+The subsystem accepts Ethernet frames over an AXI4-Stream interface, performs deterministic header decoding, and emits structured metadata aligned with the payload stream.
 
-* a **payload AXI4-Stream**, forwarded without modification, and
-* a **structured metadata side-channel** describing the decoded protocol context.
+The design is suitable for:
 
-The design is explicitly **streaming-first**, **backpressure-safe**, and **synthesis-clean**, making it suitable for both **FPGA prototyping** and **ASIC-oriented RTL flows**.
-
-This block is intended to serve as a **front-end parsing stage** for:
-
-* hardware firewalls
-* packet classification engines
-* network accelerators
-* programmable NIC pipelines
-* verification reference designs
-
+- Hardware firewall front-ends  
+- Packet classification engines  
+- Network acceleration pipelines  
+- FPGA prototyping platforms  
+- Pre-ASIC RTL integration  
 
 ---
 
-## 🧱 Architectural Intent
+## 2. Scope
 
-This design is built around a few **non-negotiable principles**:
+The subsystem performs:
 
-* **Single-pass parsing**
-  Headers are decoded as bytes arrive. Frames are never buffered end-to-end.
+- Ethernet II header parsing  
+- Optional IEEE 802.1Q single-tag VLAN resolution  
+- L3 protocol classification (IPv4, IPv6, ARP, Unknown)  
+- Transparent payload forwarding  
 
-* **Strict AXI4-Stream compliance**
-  `tvalid`, `tready`, and `tlast` semantics are preserved across all stages.
+The subsystem does **not**:
 
-* **Decoupled control and datapath**
-  FSMs do not contaminate datapath timing.
-
-* **Deterministic metadata timing**
-  Metadata is emitted **before or aligned with the first payload beat** — never after.
-
-* **Synthesis predictability**
-  No inferred RAMs, no latches, no ambiguous FSM behavior.
-
-If any of these break, the design is wrong.
+- Validate CRC/FCS  
+- Perform deep packet inspection  
+- Modify payload contents  
+- Correct malformed AXI protocol violations  
 
 ---
 
-## 🏗 High-Level Architecture
+## 3. System Partitioning
 
-<p align="center">
-  <img src="/docs/assets/architecture_diagram.png" width="800">
-</p>
+The project is structured into three isolated layers to enforce separation of concerns.
 
-<p align="center">
-  <em>Figure 1: High-level AXI-Stream Ethernet frame parser architecture showing datapath, control flow, and metadata emission.</em>
-</p>
+| Layer | Responsibility | Location |
+|--------|----------------|----------|
+| Board Wrapper | Clocking, reset synchronization, FPGA I/O, ILA debug | `rtl/top_ax7203.sv` |
+| Parser Core | AXI4-Stream frame parsing and metadata generation | `rtl/ethernet_frame_parser.sv` |
+| Verification Layer | Unit and integration testbenches | `tb/` |
 
+### 3.1 Design Separation Model
+
+```
+┌──────────────────────────────┐
+│        FPGA Board Layer      │
+│  Clocking / Reset / Debug    │
+└──────────────┬───────────────┘
+               │ AXI-Stream
+               ▼
+┌──────────────────────────────┐
+│  Ethernet Parser Core        │
+│  Pure Fabric Implementation  │
+└──────────────┬───────────────┘
+               │ AXI-Stream
+               ▼
+  Downstream Processing Logic
+```
+
+
+The parser core contains:
+
+- No board-level primitives  
+- No device-specific clocking  
+- No vendor-specific IP dependencies  
+
+This ensures portability across FPGA platforms and ASIC-oriented flows.
+
+---
+
+## 4. Architectural Constraints
+
+The subsystem is implemented under the following non-negotiable constraints:
+
+| Constraint | Description |
+|------------|------------|
+| Single-pass parsing | Headers decoded as bytes arrive; no full-frame buffering |
+| AXI compliance | `tvalid`, `tready`, and `tlast` semantics preserved |
+| Backpressure safety | No data loss under downstream stall |
+| Deterministic metadata timing | Metadata aligned with first payload beat |
+| Synthesis safety | No inferred latches, no ambiguous FSM behavior |
+
+
+## 5. High-Level Architecture
+
+The subsystem is implemented as a stage-partitioned streaming pipeline.  
+Each stage has a single functional responsibility and preserves AXI-Stream semantics.
+
+### 5.1 Dataflow Overview
 
 ```
 AXI4-Stream In
-    │
-    ▼
-AXIS Ingress
-    │
-    ▼
-Skid Buffer (Backpressure Protection)
-    │
-    ▼
-Frame Control FSM
-    │
-    ├── Byte Counter
-    ├── Header Shift Register
-    │
-    ├── Ethernet Header Parser
-    ├── VLAN Resolver
-    ├── Protocol Classifier
-    │
-    ▼
-Metadata Packager
-    │
-    ▼
-AXIS Egress
-    │
-AXI4-Stream Out (Payload + TUSER Metadata)
+      │
+      ▼
++------------------+
+| AXIS Ingress     |
++------------------+
+      │
+      ▼
++------------------+
+| Skid Buffer      |
+| (Backpressure)   |
++------------------+
+      │
+      ▼
++------------------+
+| Frame Control    |
+| + Byte Counter   |
++------------------+
+      │
+      ▼
++------------------+
+| Header Capture   |
++------------------+
+      │
+      ▼
++------------------+
+| L2 Parser        |
+| VLAN Resolver    |
+| Protocol Class   |
++------------------+
+      │
+      ▼
++------------------+
+| Metadata Packager|
++------------------+
+      │
+      ▼
++------------------+
+| AXIS Egress      |
++------------------+
+      │
+AXI4-Stream Out
 ```
 
-Each stage is **independently verifiable** and can accept or propagate backpressure without data loss or protocol violation.
+### 5.2 Design Characteristics
+
+| Attribute | Implementation Strategy |
+|------------|-------------------------|
+| Header storage | Shift-register based, fixed depth |
+| Backpressure isolation | Single-beat skid buffer |
+| Phase control | Explicit FSM (IDLE → HEADER → PAYLOAD) |
+| Metadata emission | Single-cycle valid pulse per frame |
+| Payload handling | Transparent forwarding |
+
+The pipeline guarantees one AXI word per cycle throughput under sustained `tready`.
 
 ---
 
-## 📐 Interface Specification
+## 6. Interface Specification
 
-### AXI4-Stream Data Plane
+### 6.1 AXI4-Stream Data Interface
 
-**Input (Ingress)**
+The parser exposes a standard AXI4-Stream interface.
 
-* `s_axis_tdata` `s_axis_tvalid` `s_axis_tready` `s_axis_tlast`
+#### Ingress Interface
 
-**Output (Egress)**
+| Signal | Direction | Description |
+|--------|----------|-------------|
+| `s_axis_tdata` | Input | AXI payload data |
+| `s_axis_tvalid` | Input | Data valid indicator |
+| `s_axis_tready` | Output | Backpressure signal |
+| `s_axis_tlast` | Input | End-of-frame indicator |
 
-* `m_axis_tdata` `m_axis_tvalid` `m_axis_tready` `m_axis_tlast`
+#### Egress Interface
 
-Payload data is forwarded **unaltered**.
+| Signal | Direction | Description |
+|--------|----------|-------------|
+| `m_axis_tdata` | Output | Forwarded payload data |
+| `m_axis_tvalid` | Output | Output valid |
+| `m_axis_tready` | Input | Downstream backpressure |
+| `m_axis_tlast` | Output | End-of-frame |
+
+### 6.2 AXI Contract
+
+The following guarantees are enforced:
+
+- `tdata` remains stable when `tvalid=1` and `tready=0`
+- `tlast` propagates only during payload phase
+- No combinational path exists from `tready` to `tvalid`
+- No payload beat is dropped or duplicated
+
+The subsystem assumes upstream compliance.  
+Protocol violations are not corrected internally.
 
 ---
 
-### Metadata Sideband (TUSER)
+## 7. Metadata Sideband (TUSER)
 
-Metadata is emitted as a **structured side-channel**, aligned with the payload stream.
+Metadata is emitted as a structured side-channel aligned with the payload stream.
 
 ```systemverilog
 typedef struct packed {
@@ -131,672 +211,397 @@ typedef struct packed {
 } eth_metadata_t;
 ```
 
-**Interpretation rules**:
+### 7.1 Metadata Emission Contract
 
-* `ethertype` reflects the **final resolved L3 protocol**
-* `vlan_id` is valid only if `vlan_present == 1`
-* Exactly one of `{is_ipv4, is_ipv6, is_arp, is_unknown}` is asserted
+| Property        | Guarantee                                                        |
+| --------------- | ---------------------------------------------------------------- |
+| Emission timing | Aligned with first payload beat                                  |
+| Valid pulse     | Exactly one assertion per frame                                  |
+| Stability       | Held until downstream acceptance                                 |
+| Exclusivity     | Exactly one of `{is_ipv4, is_ipv6, is_arp, is_unknown}` asserted |
 
----
+### 7.2 Interpretation Rules
 
-## 📚 Supported Protocols
+* `ethertype` reflects resolved L3 protocol (post-VLAN)
+* `vlan_id` is valid only when `vlan_present=1`
+* `l2_header_len` reflects effective L2 header length (14 or 18 bytes)
 
-|   Layer | Support                       |
-| ------: | ----------------------------- |
-|      L2 | Ethernet II                   |
-|    L2.5 | IEEE 802.1Q VLAN (single tag) |
-|      L3 | IPv4, IPv6, ARP               |
-| Payload | Transparent forwarding        |
-
-Unsupported or malformed frames are **classified as `is_unknown`** and still forwarded.
+Metadata is deterministic and never speculative.
 
 ---
 
-### ⚠ Design Assumption
+## 8. Supported Protocols
 
-> Upstream logic **must provide AXI-compliant streams**.
-> Protocol violations are not corrected or masked by this subsystem.
+The parser operates strictly at Layer-2 with limited Layer-3 classification.
 
----
+### 8.1 Protocol Coverage
 
+| Layer | Protocol | Status |
+|--------|----------|--------|
+| L2 | Ethernet II | Supported |
+| L2.5 | IEEE 802.1Q (Single Tag) | Supported |
+| L3 | IPv4 | Classified |
+| L3 | IPv6 | Classified |
+| L3 | ARP | Classified |
+| L3 | Other | Classified as `is_unknown` |
 
-## 🧠 RTL Implementation
-
-### Design Methodology
-
-The RTL is organized as a **stage-partitioned streaming pipeline**, where:
-
-* **Control logic** (FSMs, counters) is isolated from datapath logic
-* **All state transitions are cycle-explicit**
-* **No combinational paths span multiple pipeline stages**
-* **No module assumes continuous throughput**
-
-This guarantees predictable timing closure and debuggability under backpressure.
+Unsupported or unrecognized EtherTypes are forwarded without modification and classified as unknown.
 
 ---
 
-### Core Modules and Responsibilities
+## 9. Operational Characteristics
 
-| Module                  | Responsibility                                     |
-| ----------------------- | -------------------------------------------------- |
-| `axis_ingress`          | Normalizes AXI handshaking, captures ingress beats |
-| `axis_skid_buffer`      | Absorbs downstream backpressure without data loss  |
-| `frame_control_fsm`     | Tracks frame lifecycle: idle → header → payload    |
-| `byte_counter`          | Tracks byte position across AXI words              |
-| `header_shift_register` | Captures first N header bytes (byte-accurate)      |
-| `eth_header_parser`     | Extracts destination/source MAC and EtherType      |
-| `vlan_resolver`         | Detects VLAN tag and resolves final EtherType      |
-| `protocol_classifier`   | Classifies IPv4 / IPv6 / ARP / Unknown             |
-| `metadata_packager`     | Packs decoded fields into structured TUSER         |
-| `axis_egress`           | Forwards payload with aligned metadata             |
+### 9.1 Throughput
 
-There are **no monolithic modules**. Each block has a single reason to exist.
+| Parameter | Value |
+|------------|--------|
+| Sustained throughput | 1 AXI word per cycle |
+| Data width | Parameterizable (default: 64 bits) |
+| Backpressure handling | Fully supported |
+
+The pipeline does not require full-frame buffering and does not stall under normal sustained traffic when `m_axis_tready` is asserted.
 
 ---
 
-## 🔍 Detailed Module Descriptions
+### 9.2 Latency Characteristics
 
-<details>
-<summary><strong><code>ethernet_frame_parser.sv</code> (Top-Level)</strong></summary>
+Latency is deterministic and dependent on header phase completion.
 
-**Responsibility**
+| Phase | Behavior |
+|--------|----------|
+| Header phase | Metadata fields accumulated |
+| Payload phase | Metadata emitted with first payload beat |
 
-* Integrates all pipeline stages
-* Owns AXI boundary semantics
-* Aligns metadata with payload stream
+There is no speculative metadata emission.
 
-**Key Guarantees**
-
-* AXI4-Stream compliance at all boundaries
-* Deterministic metadata timing
-* Clean reset recovery mid-frame
-
-**Why it exists**
-This module is the **only place** where global timing, reset, and interface contracts are enforced.
-No other module is allowed to “know” the whole pipeline.
-
-</details>
-
-
-<details>
-<summary><strong><code>axis_ingress.sv</code></strong></summary>
-
-**Responsibility**
-
-* Normalizes incoming AXI4-Stream handshake
-* Captures ingress beats safely under backpressure
-
-**Key Guarantees**
-
-* No data loss on upstream stalls
-* Stable `tdata` under `tvalid && !tready`
-
-**Why it exists**
-AXI protocol handling is isolated here so parsing logic never deals with handshake corner cases.
-
-</details>
-
-<details>
-<summary><strong><code>axis_skid_buffer.sv</code></strong></summary>
-
-**Responsibility**
-
-* Absorbs downstream backpressure
-* Prevents combinational ready/valid paths
-
-**Key Guarantees**
-
-* One-beat buffering
-* Timing-safe decoupling between stages
-
-**Why it exists**
-Without this block, timing closure collapses the moment downstream logic stalls.
-
-</details>
-
-<details>
-<summary><strong><code>frame_control_fsm.sv</code></strong></summary>
-
-**Responsibility**
-
-* Tracks frame lifecycle: IDLE → HEADER → PAYLOAD
-* Generates control signals for header capture and payload forwarding
-
-**Key Guarantees**
-
-* Header phase completes before payload phase
-* Illegal state transitions are impossible
-
-**Why it exists**
-Control flow is explicit and auditable.
-No hidden phase inference from counters or datapath signals.
-
-</details>
-
-<details>
-<summary><strong><code>header_shift_register.sv</code></strong></summary>
-
-**Responsibility**
-
-* Captures the first N bytes of the Ethernet frame
-* Provides byte-accurate access to header fields
-
-**Key Guarantees**
-
-* Deterministic byte ordering
-* No dynamic indexing or variable part-selects
-
-**Why it exists**
-This enables synthesis-safe header parsing without buffering full frames.
-
-</details>
-
-
-<details>
-<summary><strong><code>eth_header_parser.sv</code></strong></summary>
-
-**Responsibility**
-
-* Extracts destination MAC, source MAC, and initial EtherType
-
-**Key Guarantees**
-
-* Correct byte alignment across AXI word boundaries
-* No dependency on payload phase
-
-**Why it exists**
-Separates raw header extraction from protocol interpretation.
-
-</details>
-
-
-<details>
-<summary><strong><code>vlan_resolver.sv</code></strong></summary>
-
-**Responsibility**
-
-* Detects IEEE 802.1Q VLAN tagging
-* Extracts VLAN ID and resolves final EtherType
-
-**Key Guarantees**
-
-* Correct header length computation
-* Safe behavior for VLAN and non-VLAN frames
-
-**Why it exists**
-VLAN handling is isolated to prevent polluting base Ethernet logic.
-
-</details>
-
-
-<details>
-<summary><strong><code>protocol_classifier.sv</code></strong></summary>
-
-**Responsibility**
-
-* Classifies payload protocol (IPv4 / IPv6 / ARP / Unknown)
-
-**Key Guarantees**
-
-* Exactly one classification bit asserted
-* Unsupported protocols handled gracefully
-
-**Why it exists**
-Keeps protocol policy separate from parsing mechanics.
-
-</details>
-
-
-<details>
-<summary><strong><code>metadata_packager.sv</code></strong></summary>
-
-**Responsibility**
-
-* Aggregates decoded fields into structured metadata
-* Drives AXI TUSER sideband
-
-**Key Guarantees**
-
-* Metadata emitted exactly once per frame
-* Metadata aligned with first payload beat
-
-**Why it exists**
-Centralizes all metadata timing and validity rules in one place.
-
-</details>
-
-
-<details>
-<summary><strong><code>axis_egress.sv</code></strong></summary>
-
-**Responsibility**
-
-* Forwards payload stream downstream
-* Preserves AXI semantics under backpressure
-
-**Key Guarantees**
-
-* No payload corruption
-* Proper `tlast` propagation
-
-**Why it exists**
-Keeps output AXI handling symmetric with ingress logic.
-
-</details>
+Metadata is guaranteed to be valid no later than the first payload beat.
 
 ---
 
+### 9.3 Reset Behavior
 
-### Frame Control FSM
+| Condition | Result |
+|------------|--------|
+| Reset during IDLE | Remains IDLE |
+| Reset during HEADER | Returns to IDLE safely |
+| Reset during PAYLOAD | Returns to IDLE safely |
+| Mid-frame reset | No undefined states |
 
-The frame lifecycle is governed by a **strict FSM** with explicit phases:
-
-| State     | Meaning                        |
-| --------- | ------------------------------ |
-| `IDLE`    | No active frame                |
-| `HEADER`  | Header bytes being accumulated |
-| `PAYLOAD` | Payload forwarding phase       |
-
-FSM guarantees:
-
-* Header capture completes **before metadata is asserted**
-* `tlast` is propagated **only in PAYLOAD**
-* Reset during HEADER or PAYLOAD returns safely to IDLE
-
-FSM completeness and legality are enforced via assertions.
+Reset does not cause latch inference or metastability in control paths.
 
 ---
 
-### Header Capture Strategy
+## 10. Design Assumptions
 
-<p align="center">
-  <img src="/docs/assets/flow_daigram.png" width="700">
-</p>
+The subsystem assumes:
 
-<p align="center">
-  <em>Figure 2: Semantic control path illustrating AXI beat acceptance, skid buffering, byte counting, and parser consumption.</em>
-</p>
+1. Upstream AXI4-Stream compliance  
+2. Proper assertion of `tlast` at frame boundaries  
+3. No malformed header shorter than 14 bytes  
 
-* Header bytes are captured using a **shift-based register**
-* Byte indexing is **counter-driven**, not data-dependent
-* No dynamic slicing or variable part-selects
-* Header depth is parameterized and synthesis-resolved
+The subsystem does not:
 
-This avoids:
+- Correct malformed frames  
+- Validate FCS/CRC  
+- Reconstruct missing `tlast` signals  
 
-* Unpredictable synthesis behavior
-* Timing instability
-* Simulator vs synthesis mismatches
+Protocol violations propagate transparently.
 
 ---
 
-### Metadata Emission Rules
+## 11. Current Limitations
 
-Metadata is emitted **exactly once per frame**, with the following guarantees:
+The current implementation intentionally excludes the following features:
 
-* Valid only after header parsing is complete
-* Aligned with the **first payload beat**
-* Held stable until accepted downstream
-* Never speculative or retracted
+| Feature | Status |
+|----------|--------|
+| Stacked VLAN (Q-in-Q) | Not supported |
+| Jumbo frame optimization | Not explicitly tuned |
+| CRC/FCS verification | Not implemented |
+| L3 header parsing | Not implemented |
+| Payload inspection | Not implemented |
+| MAC/PHY integration | External to parser core |
 
-
----
-
-### Levels of Verification
-
-| Level          | Purpose                               |
-| -------------- | ------------------------------------- |
-| Unit-level TBs | Validate individual modules           |
-| Integration TB | End-to-end pipeline behavior          |
-| Protocol tests | IPv4 / ARP / VLAN / malformed frames  |
-| Stress tests   | Backpressure, stalls, reset mid-frame |
-
-All tests are **cycle-accurate** and **self-checking**.
+These exclusions are deliberate to maintain deterministic timing and structural simplicity.
 
 ---
 
-### Runtime Assertions
+## 12. Scalability Considerations
 
-Simulation-only assertions enforce critical invariants:
+The parser is parameterized by:
 
-* AXI handshake correctness (`tvalid` stability)
-* Header completion before metadata valid
-* Legal FSM transitions
-* `tlast` alignment with frame boundaries
-* No payload leakage during header phase
+- `DATA_WIDTH`
+- `USER_WIDTH`
 
-Assertions are **explicitly excluded from synthesis**.
+Resource utilization scales approximately linearly with data width.
 
-This is intentional and non-negotiable.
+The design contains:
 
----
+- No BRAM dependencies
+- No DSP dependencies
+- Pure LUT/FF implementation
 
-### Simulator Support
+Good.
+Now we formalize engineering process and flow discipline.
 
-Verified on:
-
-* **Icarus Verilog** — fast functional validation
-* **Vivado XSIM** — vendor-accurate elaboration and timing behavior
-
-No simulator-specific constructs are used.
+This segment converts your repository into something that looks like an internal platform component, not a hobby project.
 
 ---
 
-## 🗂 Repository Structure
+## 13. Repository Structure
+
+The repository enforces strict separation between source, verification, constraints, and generated artifacts.
 
 ```
+
 rtl/
 ├── axis/
-│   ├── axis_ingress.sv
-│   ├── axis_skid_buffer.sv
-│   └── axis_egress.sv
-│
 ├── parser/
-│   ├── frame_control_fsm.sv
-│   ├── byte_counter.sv
-│   ├── header_shift_register.sv
-│   ├── eth_header_parser.sv
-│   ├── vlan_resolver.sv
-│   └── protocol_classifier.sv
-│
 ├── metadata/
-│   └── metadata_packager.sv
-│
-└── ethernet_frame_parser.sv   # Top-level integration
+└── ethernet_frame_parser.sv
 
 tb/
-├── unit/                       # Per-module testbenches
-├── integration/                # End-to-end AXI tests
-└── assertions/                 # Runtime protocol checks
+├── unit/
+├── integration/
+└── assertions/
 
-constraints/                    # Board-specific XDCs
-scripts/                        # Vivado automation (TCL)
-docs/                           # Architecture diagrams
-build/                          # Generated artifacts only
-
-Makefile                        # Unified entrypoint
+constraints/
+scripts/
+docs/
+build/
+Makefile
 ```
 
-### Repository Rules
+### 13.1 Directory Responsibilities
 
-* **All generated files go under `/build`**
-* RTL is synthesis-safe by default
-* Assertions are simulation-only
-* No simulator artifacts committed
+| Directory | Purpose |
+|------------|---------|
+| `rtl/` | Synthesizable SystemVerilog source |
+| `tb/` | Simulation-only verification components |
+| `constraints/` | FPGA XDC constraints |
+| `scripts/` | Vivado TCL automation |
+| `docs/` | Architecture diagrams |
+| `build/` | Generated artifacts only |
 
 ---
 
-## 🧹 Lint, Elaboration & Static Checks
+### 13.2 Repository Discipline
 
-The RTL is continuously validated for **structural correctness and synthesis safety**.
+The following rules are enforced:
 
-### Checks Performed
+- All generated artifacts reside under `/build`
+- No simulation outputs are committed
+- No Vivado-generated files are committed
+- RTL is synthesis-safe by default
+- Assertions are simulation-only
 
-| Check Category          | Status   |
-| ----------------------- | -------- |
-| Undriven nets           | Clean    |
-| Width mismatches        | Clean    |
-| Inferred latches        | None     |
-| FSM completeness        | Verified |
-| Combinational loops     | None     |
-| AXI protocol violations | None     |
-
-### Tooling
-
-* **Icarus Verilog** (`-Wall`) for fast RTL checks
-* **Vivado RTL elaboration** for synthesis-accurate validation
-
-All remaining warnings (if any) are **intentional and documented** (e.g., protocol-dependent unused bits).
+The repository is intended to remain deterministic and reproducible.
 
 ---
 
-## 🧪 Simulation Evidence
+## 14. Build & Automation Model
 
-### Supported Simulators
+The project uses a unified Makefile-driven flow supporting:
 
-* **Icarus Verilog** — functional and integration testing
-* **Vivado XSIM** — vendor-accurate elaboration and timing behavior
+- Icarus simulation
+- Vivado synthesis
+- Vivado implementation
+- Bitstream generation
+- Hardware bring-up
 
-No simulator-specific constructs are used.
+All flows are driven through:
+
+```
+Makefile
+scripts/vivado_flow.tcl
+```
 
 ---
 
-### Example Integration Run
+### 14.1 Core Make Targets
 
-```
-=== Sending Ethernet Frame ===
-[RX] data=1122334455667788 last=0
-[RX] data=99aabbccddeeff00 last=0
-[RX] data=0800450000000000 last=0
-[RX] data=deadbeefdeadbeef last=0
-[RX] data=cafebabecafebabe last=1
----- FRAME END ----
-=== TEST PASSED ===
-```
-
-### Observed Metadata
-
-```
-[META]
-dst_mac     = 11:22:33:44:55:66
-src_mac     = 77:88:99:aa:bb:cc
-ethertype   = 0x0800
-vlan_present= 0
-ipv4        = 1
-```
-
-**Confirms**:
-
-* Correct MAC extraction
-* Correct EtherType resolution
-* Correct IPv4 classification
-* Payload transparency preserved
-
-If any of these fail, the test fails. No silent passes.
+| Target | Description |
+|--------|------------|
+| `make help` | Lists available targets |
+| `make sim` | Runs Icarus integration test |
+| `make vivado-sim` | Runs XSIM simulation |
+| `make vivado-synth` | Runs synthesis only |
+| `make vivado-impl` | Runs place & route |
+| `make vivado-bit` | Generates bitstream |
+| `make vivado-all` | Full Vivado flow |
 
 ---
 
-## ▶ Build & Run Instructions
+### 14.2 Vivado Flow Architecture
 
-### Prerequisites
+The Vivado flow:
 
-* GNU Make
-* Icarus Verilog
-* Xilinx Vivado (2023+ recommended)
+1. Creates project in `/build/vivado`
+2. Adds RTL sources explicitly (no wildcards)
+3. Adds constraints
+4. Synthesizes parser core
+5. Runs implementation
+6. Optionally generates bitstream
+7. Exports debug probe file (when enabled)
 
-> [!NOTE]
-> All simulations, scripts, and build flows in this repository have been **developed and tested on Windows environments**.
->
-> While the design itself is OS-agnostic, behavior on **Linux or macOS hosts has not been formally validated**.  
-> Minor path, shell, or toolchain differences may require user-side adjustments.
+The flow is intentionally:
 
----
-
-### ⚠️ Important: Enabling Runtime Assertions in Icarus
->[!NOTE]
->When running simulations using **Icarus Verilog**, the runtime assertion checks **must be explicitly enabled** in the integration testbench.
-
-In the file: `tb/integration/axi_header_done_payload.sv`
-
-Locate the following section at the **end of the file**:
-
-```systemverilog
-endmodule
-
-// ============================================================
-// Include runtime assertions LAST (global scope)
-// ============================================================
-//`include "tb/assertions/parser_runtime_checks.sv"
-```
-
-#### Required Action
-
-To enable runtime protocol and sanity checks during Icarus simulation, **uncomment the include**:
-
-```systemverilog
-// ============================================================
-// Include runtime assertions LAST (global scope)
-// ============================================================
-`include "tb/assertions/parser_runtime_checks.sv"
-```
-
-> **Why this is required**
->
-> * Icarus Verilog requires assertion modules to be included at **global scope**
-> * These assertions enforce AXI protocol correctness, FSM legality, and metadata timing
-> * If the include remains commented:
->
->   * Simulation will still run
->   * **Critical protocol violations may go undetected**
-
-> **Note**
->
-> Assertions are **simulation-only** and are **not synthesized**.
-> Vivado flows are unaffected by this include.
-
-After enabling the include, run:
-
-```bash
-make sim
-```
----
-
-### Core Make Targets
-
-```bash
-make help
-```
-
-Lists all supported targets and overrides.
+- Explicit (no implicit file discovery)
+- Deterministic
+- CI-friendly
 
 ---
 
-### Simulation (Icarus)
+### 14.3 Manual Compile Order Enforcement
 
-```bash
-make sim
+The TCL flow forces:
+
+```tcl
+set_property source_mgmt_mode None [current_project]
 ```
 
-* Runs full integration testbench
-* Generates waveforms under `/build`
-* Assertion failures halt simulation
+This prevents automatic hierarchy updates from overriding the specified top module.
 
 ---
 
-### RTL Lint / Elaboration
+## 15. FPGA Bring-Up & Debug
 
-```bash
-make lint
+The design has been validated on:
+
+* ALINX AX7203 (Artix-7 `xc7a200tfbg484-1`)
+
+### 15.1 Clocking Strategy
+
+* Differential 200 MHz system clock
+* IBUFDS for fabric clock input
+* Synchronous reset synchronization
+* No fabric clock generation inside parser core
+
+Clock primitives are confined strictly to board wrapper layer.
+
+---
+
+### 15.2 On-Chip Debug (ILA)
+
+Integrated ILA allows real-time capture of:
+
+* AXI handshake signals
+* Parser output valid
+* Metadata valid
+* Payload data
+
+Debug probes are preserved using:
+
+```tcl
+set_property MARK_DEBUG true [get_nets ...]
 ```
 
-* RTL elaboration
-* Parameter resolution
-* Hierarchy validation
+Debug probe export:
 
----
-
-### Vivado Simulation
-
-```bash
-make vivado-sim
+```tcl
+write_debug_probes build/vivado/debug.ltx
 ```
 
-* Runs XSIM-based simulation
-* Useful for vendor parity checks
+Hardware validation confirms:
+
+* AXI handshake correctness
+* Payload integrity
+* Deterministic metadata alignment
 
 ---
 
-### Vivado Synthesis Only
+## 16. Hardware Validation Status
 
-```bash
-make vivado-synth
-```
+The subsystem has been:
 
-* RTL → netlist
-* Reports utilization and timing estimates
+* Synthesized successfully
+* Implemented successfully
+* Bitstream generated
+* Loaded onto hardware
+* Verified using ILA
 
----
+Validation confirms:
 
-### Vivado Implementation (Place & Route)
+* Correct AXI streaming behavior
+* Proper backpressure handling
+* Correct metadata timing under live hardware execution
 
-```bash
-make vivado-impl
-```
+The parser does not:
 
-* Placement and routing
-* Timing closure analysis
+- Contain Ethernet MAC functionality
+- Interface directly with PHY
+- Manage MDIO
+- Perform FCS validation
 
----
-
-### Full Vivado Flow (up to Bitstream)
-
-```bash
-make vivado-all
-```
-
-> ⚠ Bitstream generation **requires valid board-level XDC constraints**.
+These responsibilities are external to the parser core.
 
 ---
 
-## ⚙ Parameter Overrides
+### 18.2 Portability
 
-Parameters can be overridden at invocation time:
+The core parser:
 
-```bash
-make sim DATA_WIDTH=128
-```
+- Uses synthesizable SystemVerilog only
+- Contains no vendor-specific primitives
+- Has no dependency on FPGA IP
 
-```bash
-make vivado-all PART=xc7a200tfbg484-1
-```
-
-### Supported Overrides
-
-| Parameter    | Meaning                                 |
-| ------------ | --------------------------------------- |
-| `DATA_WIDTH` | AXI data width (default: 64)            |
-| `USER_WIDTH` | Metadata sideband width                 |
-| `PART`       | Target FPGA part                        |
-| `BUILD_DIR`  | Output directory (default: `build/`)    |
-| `SIM_TIME`   | Simulation runtime limit                |
-| `MODE`       | Vivado operation mode (GUI/tcl/default) |
-
-All generated artifacts are placed under `/build` to keep the repository clean.
+Board wrapper contains FPGA-specific primitives and is replaceable.
 
 ---
 
-## 🏗 FPGA Implementation Summary
+### 18.3 ASIC Considerations
 
-### Target Class
+The parser core is structurally compatible with ASIC flows under:
 
-* Xilinx 7-Series (Artix-7 / Kintex-7 class)
+- Standard synchronous clock
+- Reset synchronization handled externally
+- AXI-Stream interface compliance
 
-### Nominal Operating Point
-
-* Clock: 125 MHz
-* Throughput: **1 AXI word / cycle sustained**
-* Latency: deterministic, header-dependent
+No FPGA-only constructs are present in core logic.
 
 ---
 
-### Resource Utilization (Post-Route, Typical)
+## 19. Roadmap
 
-| Resource | Usage                        |
-| -------- | ---------------------------- |
-| LUTs     | ~300–400                     |
-| FFs      | ~300–350                     |
-| BRAM     | 0                            |
-| DSP      | 0                            |
-| WNS      | +2 ns (constraint-dependent) |
+Future enhancements may include:
 
-The design is **logic-bound**, not memory-bound, and scales linearly with data width.
+### 19.1 Protocol Extensions
+
+- IPv4 header parsing
+- TCP/UDP port extraction
+- Stacked VLAN (Q-in-Q)
+- MPLS classification
+
+### 19.2 Data-Plane Extensions
+
+- Rule-matching engine
+- Hardware firewall logic
+- Flow table lookup
+- Statistics counters
+
+### 19.3 Interface Extensions
+
+- Tri-Mode Ethernet MAC integration
+- RGMII/SGMII PHY integration
+- PCIe/XDMA streaming input
 
 ---
 
-<div align="center">
+## 20. Compliance & Determinism Statement
 
-**Streaming • Deterministic • Verification-Driven**
+This subsystem guarantees:
 
-*AXI-Compliant Ethernet Frame Parser Subsystem*
+- Deterministic metadata emission
+- AXI4-Stream protocol correctness
+- No data corruption under backpressure
+- Clean reset recovery
 
-</div>
+The subsystem does not guarantee:
+
+- Packet integrity validation
+- Protection against malformed AXI traffic
+- Compliance enforcement on upstream violations
+
+All guarantees are limited strictly to defined interface contracts.
+
+---
