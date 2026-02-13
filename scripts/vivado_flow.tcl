@@ -75,6 +75,30 @@ add_files -norecurse ./rtl/metadata/metadata_packager.sv
 # Core parser
 add_files -norecurse ./rtl/ethernet_frame_parser.sv
 
+# ------------------------------------------------------------
+# ILA IP (CLI-generated)
+# ------------------------------------------------------------
+
+puts "=== Creating ILA IP ==="
+
+create_ip -name ila -vendor xilinx.com -library ip -version 6.2 -module_name ila_0
+
+set_property -dict [list \
+    CONFIG.C_NUM_OF_PROBES {5} \
+    CONFIG.C_PROBE0_WIDTH {1} \
+    CONFIG.C_PROBE1_WIDTH {1} \
+    CONFIG.C_PROBE2_WIDTH {1} \
+    CONFIG.C_PROBE3_WIDTH {1} \
+    CONFIG.C_PROBE4_WIDTH {64} \
+] [get_ips ila_0]
+
+generate_target all [get_ips ila_0]
+
+# THIS IS WHAT YOU WERE MISSING
+synth_ip [get_ips ila_0]
+
+update_compile_order -fileset sources_1
+
 # BOARD TOP (ONLY PLACE WITH CLOCKING)
 add_files -norecurse ./rtl/top_ax7203.sv
 
@@ -123,6 +147,10 @@ puts "=== Running implementation ==="
 opt_design
 place_design
 route_design
+
+# Generate debug probe file for ILA
+write_debug_probes -force $PROJ_DIR/debug.ltx
+
 write_checkpoint -force $PROJ_DIR/post_route.dcp
 report_utilization -file $PROJ_DIR/util_impl.rpt
 report_timing_summary -file $PROJ_DIR/timing_impl.rpt
@@ -130,6 +158,6 @@ report_timing_summary -file $PROJ_DIR/timing_impl.rpt
 if {$MODE eq "impl"} { exit 0 }
 
 puts "=== Generating bitstream ==="
-write_bitstream -force $PROJ_DIR/ethernet_parser_ss.bit
+write_bitstream -force -debug_bitstream $PROJ_DIR/ethernet_parser_ss.bit
 
 puts "=== FLOW COMPLETE ==="
