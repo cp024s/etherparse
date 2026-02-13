@@ -1,4 +1,11 @@
-# <p align = centrer> AXI-Stream Ethernet Frame Parser & Metadata Extraction Subsystem </p>
+<h1 align="center">
+AXI-Stream Ethernet Frame Parser & Metadata Extraction Subsystem
+</h1>
+<p align = center>
+A cycle-accurate, streaming Ethernet Layer-2 parser implemented in synthesizable SystemVerilog, validated on Artix-7 FPGA hardware and architected for deterministic AXI4-Stream compliance and ASIC portability.
+</p>
+<br>
+
 
 <div align="center">
 
@@ -50,43 +57,13 @@ The subsystem does **not**:
 
 ## 3. System Partitioning
 
-### 3.2 System Partitioning Diagram
-
 <p align="center">
   <img src="/docs/assets/system_partitioning.png" width="500">
 </p>
 
 <p align="center">
-  <em>Figure 1: Separation between board wrapper, parser core, and downstream logic.</em>
+  <em>Figure 1 — Logical separation between board wrapper, parser core, and downstream logic.</em>
 </p>
-
-
-The project is structured into three isolated layers to enforce separation of concerns.
-
-| Layer | Responsibility | Location |
-|--------|----------------|----------|
-| Board Wrapper | Clocking, reset synchronization, FPGA I/O, ILA debug | `rtl/top_ax7203.sv` |
-| Parser Core | AXI4-Stream frame parsing and metadata generation | `rtl/ethernet_frame_parser.sv` |
-| Verification Layer | Unit and integration testbenches | `tb/` |
-
-### 3.1 Design Separation Model
-
-```
-┌──────────────────────────────┐
-│        FPGA Board Layer      │
-│  Clocking / Reset / Debug    │
-└──────────────┬───────────────┘
-               │ AXI-Stream
-               ▼
-┌──────────────────────────────┐
-│  Ethernet Parser Core        │
-│  Pure Fabric Implementation  │
-└──────────────┬───────────────┘
-               │ AXI-Stream
-               ▼
-  Downstream Processing Logic
-```
-
 
 The parser core contains:
 
@@ -96,6 +73,14 @@ The parser core contains:
 
 This ensures portability across FPGA platforms and ASIC-oriented flows.
 
+
+The project is structured into three isolated layers to enforce separation of concerns.
+
+| Layer | Responsibility | Location |
+|--------|----------------|----------|
+| Board Wrapper | Clocking, reset synchronization, FPGA I/O, ILA debug | `rtl/top_ax7203.sv` |
+| Parser Core | AXI4-Stream frame parsing and metadata generation | `rtl/ethernet_frame_parser.sv` |
+| Verification Layer | Unit and integration testbenches | `tb/` |
 ---
 
 ## 4. Architectural Constraints
@@ -114,11 +99,11 @@ The subsystem is implemented under the following non-negotiable constraints:
 ## 5. High-Level Architecture
 
 <p align="center">
-  <img src="/docs/assets/architecture_diagram.png" width="700">
+  <img src="/docs/assets/architecture_diagram.png" width="750">
 </p>
 
 <p align="center">
-  <em>Figure 2 — High-level streaming architecture of the AXI-Stream Ethernet parser subsystem.</em>
+  <em>Figure 2 — Stage-partitioned streaming architecture of the AXI-Stream Ethernet parser.</em>
 </p>
 
 
@@ -127,50 +112,14 @@ Each stage has a single functional responsibility and preserves AXI-Stream seman
 
 ### 5.1 Dataflow Overview
 
-```
-AXI4-Stream In
-      │
-      ▼
-+------------------+
-| AXIS Ingress     |
-+------------------+
-      │
-      ▼
-+------------------+
-| Skid Buffer      |
-| (Backpressure)   |
-+------------------+
-      │
-      ▼
-+------------------+
-| Frame Control    |
-| + Byte Counter   |
-+------------------+
-      │
-      ▼
-+------------------+
-| Header Capture   |
-+------------------+
-      │
-      ▼
-+------------------+
-| L2 Parser        |
-| VLAN Resolver    |
-| Protocol Class   |
-+------------------+
-      │
-      ▼
-+------------------+
-| Metadata Packager|
-+------------------+
-      │
-      ▼
-+------------------+
-| AXIS Egress      |
-+------------------+
-      │
-AXI4-Stream Out
-```
+<p align="center">
+  <img src="/docs/assets/parser_dataflow.png" width="700">
+</p>
+
+<p align="center">
+  <em>Figure 3 — Internal datapath connectivity and control signal propagation.</em>
+</p>
+
 
 ### 5.2 Design Characteristics
 
@@ -183,6 +132,15 @@ AXI4-Stream Out
 | Payload handling | Transparent forwarding |
 
 The pipeline guarantees one AXI word per cycle throughput under sustained `tready`.
+
+<p align="center">
+  <img src="/docs/assets/module_interaction.png" width="700">
+</p>
+
+<p align="center">
+  <em>Figure 4 — Module-level interaction and separation between control and datapath.</em>
+</p>
+
 
 ---
 
@@ -222,6 +180,14 @@ The following guarantees are enforced:
 The subsystem assumes upstream compliance.  
 Protocol violations are not corrected internally.
 
+<p align="center">
+  <img src="/docs/assets/axi_timing.png" width="700">
+</p>
+
+<p align="center">
+  <em>Figure 5 — AXI4-Stream handshake timing behavior under backpressure.</em>
+</p>
+
 ---
 
 ## 7. Metadata Sideband (TUSER)
@@ -231,7 +197,7 @@ Protocol violations are not corrected internally.
 </p>
 
 <p align="center">
-  <em>Figure 3 — layout of the metadata sideband structure.</em>
+  <em>Figure 6 — layout of the metadata sideband structure.</em>
 </p>
 
 Metadata is emitted as a structured side-channel aligned with the payload stream.
@@ -251,15 +217,6 @@ typedef struct packed {
 } eth_metadata_t;
 ```
 
-<br>
-<p align="center">
-  <img src="/docs/assets/metadata_timing.png" width="600">
-</p>
-
-<p align="center">
-  <em>Figure 4 — Metadata validity timing aligned with the first payload beat.</em>
-</p>
-
 
 ### 7.1 Metadata Emission Contract
 
@@ -270,6 +227,16 @@ typedef struct packed {
 | Stability       | Held until downstream acceptance                                 |
 | Exclusivity     | Exactly one of `{is_ipv4, is_ipv6, is_arp, is_unknown}` asserted |
 
+<br>
+<p align="center">
+  <img src="/docs/assets/metadata_timing.png" width="600">
+</p>
+
+<p align="center">
+  <em>Figure 7 — Metadata valid timing aligned with first payload beat.</em>
+</p>
+
+
 ### 7.2 Interpretation Rules
 
 * `ethertype` reflects resolved L3 protocol (post-VLAN)
@@ -277,6 +244,25 @@ typedef struct packed {
 * `l2_header_len` reflects effective L2 header length (14 or 18 bytes)
 
 Metadata is deterministic and never speculative.
+
+### 7.3 Bit Allocation
+
+| Field | Width | Bit Range |
+|--------|-------|------------|
+| dest_mac | 48 | [135:88] |
+| src_mac | 48 | [87:40] |
+| ethertype | 16 | [39:24] |
+| vlan_id | 12 | [23:12] |
+| vlan_present | 1 | [11] |
+| is_ipv4 | 1 | [10] |
+| is_ipv6 | 1 | [9] |
+| is_arp | 1 | [8] |
+| is_unknown | 1 | [7] |
+| l2_header_len | 5 | [6:2] |
+
+> [!IMPORTANT]
+> The AXI `USER_WIDTH` parameter must be configured to **at least 136 bits**
+> when the structured metadata interface is enabled.
 
 ---
 
@@ -308,6 +294,25 @@ Unsupported or unrecognized EtherTypes are forwarded without modification and cl
 | Sustained throughput | 1 AXI word per cycle |
 | Data width | Parameterizable (default: 64 bits) |
 | Backpressure handling | Fully supported |
+
+> [!NOTE]
+> ### Throughput Calculation (64-bit Mode @ 125 MHz)
+>
+> - Data width: 64 bits = 8 bytes per cycle  
+> - Clock frequency: 125 MHz  
+>
+> Theoretical peak fabric throughput:
+>
+> ```
+> 125e6 cycles/sec × 8 bytes/cycle = 1,000,000,000 bytes/sec
+> ```
+>
+> Equivalent to:
+>
+> - 1 GB/s  
+> - 8 Gbps raw datapath bandwidth
+>
+> This exceeds 1G Ethernet line-rate requirements and provides headroom for multi-port or burst scenarios.
 
 The pipeline does not require full-frame buffering and does not stall under normal sustained traffic when `m_axis_tready` is asserted.
 
@@ -341,7 +346,7 @@ Reset does not cause latch inference or metastability in control paths.
 
 ---
 
-## 10. Design Assumptions
+## 10. Operational Assumptions
 
 The subsystem assumes:
 
@@ -390,11 +395,6 @@ The design contains:
 - No BRAM dependencies
 - No DSP dependencies
 - Pure LUT/FF implementation
-
-Good.
-Now we formalize engineering process and flow discipline.
-
-This segment converts your repository into something that looks like an internal platform component, not a hobby project.
 
 ---
 
@@ -521,7 +521,7 @@ This prevents automatic hierarchy updates from overriding the specified top modu
 </p>
 
 <p align="center">
-  <em>Figure 5 — Live ILA capture showing AXI streaming and metadata behavior on hardware.</em>
+  <em>Figure 8 — Live ILA capture showing AXI streaming and metadata behavior on hardware.</em>
 </p>
 
 The design has been validated on:
@@ -541,12 +541,18 @@ Clock primitives are confined strictly to board wrapper layer.
 
 ### 15.2 On-Chip Debug (ILA)
 
-Integrated ILA allows real-time capture of:
+Hardware validation performed using Xilinx ILA core.
+Probes included:
+- s_axis handshake
+- m_axis handshake
+- metadata valid
+- payload data bus
 
-* AXI handshake signals
-* Parser output valid
-* Metadata valid
-* Payload data
+Validation objectives:
+- No dropped beats under backpressure
+- Metadata asserted exactly once per frame
+- Proper tlast alignment
+
 
 Debug probes are preserved using:
 
@@ -570,52 +576,61 @@ Hardware validation confirms:
 
 ## 16. Hardware Validation Status
 
-The subsystem has been:
-
-* Synthesized successfully
-* Implemented successfully
-* Bitstream generated
-* Loaded onto hardware
-* Verified using ILA
-
-Validation confirms:
-
-* Correct AXI streaming behavior
-* Proper backpressure handling
-* Correct metadata timing under live hardware execution
-
-The parser does not:
-
-- Contain Ethernet MAC functionality
-- Interface directly with PHY
-- Manage MDIO
-- Perform FCS validation
-
-These responsibilities are external to the parser core.
+| Stage | Status |
+|--------|--------|
+| RTL Lint | Clean |
+| Synthesis | Passed |
+| Implementation | Passed |
+| Timing Closure | Met @ 125 MHz |
+| Bitstream Generation | Successful |
+| Hardware Programming | Verified |
+| ILA Capture | Verified |
 
 ---
 
-### 18.2 Portability
+## 17. Version & Maturity
 
-The core parser:
+| Version | Status | Notes |
+|----------|--------|-------|
+| v1.0 | FPGA Validated | AX7203 bring-up complete |
 
-- Uses synthesizable SystemVerilog only
-- Contains no vendor-specific primitives
-- Has no dependency on FPGA IP
-
-Board wrapper contains FPGA-specific primitives and is replaceable.
 
 ---
 
-### 18.3 ASIC Considerations
-
-The parser core is structurally compatible with ASIC flows under:
-
-- Standard synchronous clock
-- Reset synchronization handled externally
-- AXI-Stream interface compliance
-
-No FPGA-only constructs are present in core logic.
+> [!IMPORTANT]
+> ### Core Portability
+>
+> The **parser core** is strictly fabric-agnostic.
+>
+> - Pure synthesizable SystemVerilog
+> - No FPGA primitives
+> - No vendor IP dependencies
+> - No device-specific clocking constructs
+>
+> All FPGA-specific logic (IBUFDS, ILA, constraints) is isolated to the board wrapper layer.
+>
+> The core can be retargeted to:
+> - Alternative FPGA families
+> - ASIC standard-cell flows
+> - Emulation platforms
+>
+> without structural modification.
 
 ---
 
+> [!NOTE]
+> ### ASIC Migration Considerations
+>
+> The parser core is architecturally compatible with ASIC integration under the following conditions:
+>
+> - External clock generation
+> - Synchronous reset handling
+> - AXI-Stream protocol compliance at integration boundaries
+>
+> The design:
+>
+> - Contains no FPGA-only constructs
+> - Does not rely on BRAM or DSP inference
+> - Avoids asynchronous logic and gated clocks
+>
+> Minor wrapper refactoring is sufficient for ASIC tape-out integration.
