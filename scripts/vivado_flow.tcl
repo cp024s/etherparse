@@ -76,6 +76,31 @@ add_files -norecurse ./rtl/metadata/metadata_packager.sv
 add_files -norecurse ./rtl/ethernet_frame_parser.sv
 
 # ------------------------------------------------------------
+# MAC Vendor Files (1G RGMII)
+# ------------------------------------------------------------
+
+add_files -norecurse ./rtl/mac/vendor/eth_mac_1g_rgmii_fifo.v
+add_files -norecurse ./rtl/mac/vendor/eth_mac_1g_rgmii.v
+add_files -norecurse ./rtl/mac/vendor/eth_mac_1g_fifo.v
+add_files -norecurse ./rtl/mac/vendor/eth_mac_1g.v
+
+add_files -norecurse ./rtl/mac/vendor/axis_gmii_rx.v
+add_files -norecurse ./rtl/mac/vendor/axis_gmii_tx.v
+
+add_files -norecurse ./rtl/mac/vendor/axis_eth_fcs.v
+add_files -norecurse ./rtl/mac/vendor/axis_eth_fcs_insert.v
+add_files -norecurse ./rtl/mac/vendor/axis_eth_fcs_check.v
+
+add_files -norecurse ./rtl/mac/vendor/lfsr.v
+add_files -norecurse ./rtl/mac/vendor/rgmii_phy_if.v
+add_files -norecurse ./rtl/mac/vendor/gmii_phy_if.v
+add_files -norecurse ./rtl/mac/vendor/iddr.v
+add_files -norecurse ./rtl/mac/vendor/oddr.v
+
+# MAC wrapper
+add_files -norecurse ./rtl/mac/mac_1g_rgmii_wrapper.sv
+
+# ------------------------------------------------------------
 # ILA IP (CLI-generated)
 # ------------------------------------------------------------
 
@@ -158,6 +183,7 @@ report_timing_summary -file $PROJ_DIR/timing_impl.rpt
 if {$MODE eq "impl"} { exit 0 }
 
 puts "=== Generating bitstream ==="
-write_bitstream -force -debug_bitstream $PROJ_DIR/ethernet_parser_ss.bit
+write_bitstream -force $PROJ_DIR/ethernet_parser_ss.bit
+#this is supposed to be the change
 
 puts "=== FLOW COMPLETE ==="
