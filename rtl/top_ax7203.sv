@@ -1,38 +1,61 @@
 `timescale 1ns / 1ps
 
 module top_ax7203 (
-    // Differential clock
+    // ============================================================
+    // 200 MHz Differential Clock (Board Input)
+    // ============================================================
     input  wire sys_clk_p,
     input  wire sys_clk_n,
 
     // Active-low reset
     input  wire rst_n,
 
+    // ============================================================
+    // RGMII PHY Interface (1G Ethernet)
+    // ============================================================
+    input  wire        rgmii_rx_clk,
+    input  wire [3:0]  rgmii_rxd,
+    input  wire        rgmii_rx_ctl,
+
+    output wire        rgmii_tx_clk,
+    output wire [3:0]  rgmii_txd,
+    output wire        rgmii_tx_ctl,
+    output wire        phy_reset_n,
+
     // LEDs
-    output wire [3:0] led
+    output wire [3:0]  led
 );
 
     // ============================================================
-    // Clock buffer
+    // Clock Buffer (Use 200 MHz directly for now)
     // ============================================================
 
-    wire clk;
+    wire clk_200;
 
     IBUFDS #(
         .DIFF_TERM("TRUE"),
         .IBUF_LOW_PWR("FALSE")
-    ) u_ibufds (
+    )
+    u_ibufds (
         .I  (sys_clk_p),
         .IB (sys_clk_n),
-        .O  (clk)
+        .O  (clk_200)
     );
 
     // ============================================================
-    // Reset sync (active-high internal)
+    // TODO: Replace with MMCM to generate proper 125 MHz
+    // For now: assume external 125 MHz is provided
+    // ============================================================
+
+    wire clk_125mhz = clk_200;   // TEMPORARY (will fix later)
+
+    // ============================================================
+    // Reset Synchronization
     // ============================================================
 
     reg [3:0] rst_sync;
-    always @(posedge clk or negedge rst_n) begin
+
+    always @(posedge clk_125mhz or negedge rst_n) begin
         if (!rst_n)
             rst_sync <= 4'b1111;
         else
@@ -42,93 +65,51 @@ module top_ax7203 (
     wire rst = rst_sync[3];
 
     // ============================================================
-    // Simple AXI test generator (64-bit)
+    // Ethernet Subsystem
     // ============================================================
 
-    reg  [63:0] tdata;
-    reg         tvalid;
-    reg         tlast;
-    wire        tready;
+    wire parser_valid;
+    wire parser_last;
+    wire parser_meta_valid;
 
-    reg [7:0] counter;
+    ethernet_subsystem u_eth_sys (
+        .clk_125mhz(clk_125mhz),
+        .rst(rst),
 
-    always @(posedge clk) begin
-        if (rst) begin
-            counter <= 8'd0;
-            tvalid  <= 1'b0;
-            tlast   <= 1'b0;
-            tdata   <= 64'd0;
-        end else begin
-            tvalid <= 1'b1;
-            counter <= counter + 1;
+        .rgmii_rx_clk(rgmii_rx_clk),
+        .rgmii_rxd(rgmii_rxd),
+        .rgmii_rx_ctl(rgmii_rx_ctl),
 
-            tdata <= {8{counter}};
+        .rgmii_tx_clk(rgmii_tx_clk),
+        .rgmii_txd(rgmii_txd),
+        .rgmii_tx_ctl(rgmii_tx_ctl),
+        .phy_reset_n(phy_reset_n),
 
-            if (counter == 8'd63)
-                tlast <= 1'b1;
-            else
-                tlast <= 1'b0;
-        end
-    end
-
-    // ============================================================
-    // Parser outputs
-    // ============================================================
-
-    wire [63:0] m_axis_tdata;
-    wire        m_axis_tvalid;
-    wire        m_axis_tlast;
-    wire        m_axis_tuser_valid;
-
-    // ============================================================
-    // Parser instance
-    // ============================================================
-
-    ethernet_frame_parser #(
-        .DATA_WIDTH(64),
-        .USER_WIDTH(1)
-    ) uut (
-        .clk               (clk),
-        .rst               (rst),
-
-        .s_axis_tdata      (tdata),
-        .s_axis_tvalid     (tvalid),
-        .s_axis_tready     (tready),
-        .s_axis_tlast      (tlast),
-
-        .m_axis_tdata      (m_axis_tdata),
-        .m_axis_tvalid     (m_axis_tvalid),
-        .m_axis_tready     (1'b1),
-        .m_axis_tlast      (m_axis_tlast),
-
-        .m_axis_tuser      (),
-        .m_axis_tuser_valid(m_axis_tuser_valid)
+        .parser_valid(parser_valid),
+        .parser_last(parser_last),
+        .parser_meta_valid(parser_meta_valid)
     );
 
     // ============================================================
     // LED Debug
     // ============================================================
 
-    assign led[0] = m_axis_tvalid;
-    assign led[1] = m_axis_tlast;
-    assign led[2] = m_axis_tuser_valid;
-    assign led[3] = clk;
-    
+    assign led[0] = parser_valid;
+    assign led[1] = parser_last;
+    assign led[2] = parser_meta_valid;
+    assign led[3] = clk_125mhz;
+
     // ============================================================
-    // ILA Instance
+    // ILA Debug
     // ============================================================
 
     ila_0 u_ila (
-        .clk    (clk),
-
-        .probe0 (tvalid),              // AXI input valid
-        .probe1 (tready),              // AXI ready
-        .probe2 (m_axis_tvalid),       // Parser output valid
-        .probe3 (m_axis_tuser_valid),  // Metadata valid
-        .probe4 (m_axis_tdata)         // 64-bit data
+        .clk    (clk_125mhz),
+        .probe0 (parser_valid),
+        .probe1 (parser_last),
+        .probe2 (parser_meta_valid),
+        .probe3 (rgmii_rx_ctl),
+        .probe4 (rgmii_rxd)
     );
 
 endmodule
-
-
-
