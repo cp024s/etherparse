@@ -7,7 +7,7 @@
 
 module axis_ingress_tb;
 
-  localparam int DATA_WIDTH = 64;
+  localparam int DATA_WIDTH = 8;
   localparam int USER_WIDTH = 1;
 
   logic clk;

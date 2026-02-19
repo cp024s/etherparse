@@ -8,7 +8,7 @@
 
 module header_shift_register_tb;
 
-  localparam int DATA_WIDTH = 64;
+  localparam int DATA_WIDTH = 8;
 
   // Clock / Reset
   logic clk;

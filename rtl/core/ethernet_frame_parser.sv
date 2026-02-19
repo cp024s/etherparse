@@ -7,7 +7,8 @@
 import eth_parser_pkg::*;
 
 module ethernet_frame_parser #(
-  parameter int DATA_WIDTH = 64
+  parameter int DATA_WIDTH = 8,
+  parameter int USER_WIDTH = 1
 )(
   input  logic                  clk,
   input  logic                  rst_n,

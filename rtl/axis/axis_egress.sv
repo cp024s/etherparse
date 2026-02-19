@@ -8,7 +8,7 @@
 `timescale 1ns/1ps
 
 module axis_egress #(
-  parameter int DATA_WIDTH = 64,
+  parameter int DATA_WIDTH = 8,
   parameter int USER_WIDTH = 1
 )(
   input  logic                   clk,

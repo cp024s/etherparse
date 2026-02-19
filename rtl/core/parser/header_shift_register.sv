@@ -9,7 +9,7 @@
 `timescale 1ns/1ps
 
 module header_shift_register #(
-  parameter int DATA_WIDTH   = 64,
+  parameter int DATA_WIDTH   = 8,
   parameter int HEADER_BYTES = 14
 )(
   input  logic                   clk,

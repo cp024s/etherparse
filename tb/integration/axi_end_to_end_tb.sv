@@ -8,7 +8,7 @@ import eth_parser_pkg::*;
 
 module axi_end_to_end_tb;
 
-  localparam int DATA_WIDTH = 64;
+  localparam int DATA_WIDTH = 8;
 
   // ----------------------------------------------------------
   // Clock / Reset
