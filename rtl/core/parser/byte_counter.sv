@@ -10,7 +10,7 @@
 // ============================================================
 
 module byte_counter #(
-  parameter int DATA_WIDTH   = 64,
+  parameter int DATA_WIDTH   = 8,
   parameter int HEADER_BYTES = 14
 )(
   input  logic clk,
