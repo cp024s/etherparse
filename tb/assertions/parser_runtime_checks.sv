@@ -8,7 +8,7 @@
 `timescale 1ns/1ps
 
 module parser_runtime_checks #(
-  parameter int DATA_WIDTH = 64
+  parameter int DATA_WIDTH = 8
 )(
   input logic clk,
   input logic rst_n,

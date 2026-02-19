@@ -7,7 +7,7 @@
 
 module byte_counter_tb;
 
-  localparam int DATA_WIDTH   = 64;
+  localparam int DATA_WIDTH   = 8;
   localparam int HEADER_BYTES = 18;
   localparam int BYTES_PER_BEAT = DATA_WIDTH / 8;
 

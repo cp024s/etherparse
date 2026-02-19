@@ -2,7 +2,7 @@
 
 module axi_header_done_tb;
 
-  localparam int DATA_WIDTH = 64;
+  localparam int DATA_WIDTH = 8;
   localparam int CLK_PERIOD = 10;
 
   // =========================================================
