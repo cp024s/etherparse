@@ -1,125 +1,112 @@
 // ============================================================
 // Module: ethernet_frame_parser
-// Purpose: Complete AXI-stream Ethernet frame parser (TOP)
-// Board : ALINX AX7203
+// Purpose: Top-level Ethernet frame parsing pipeline
 // ============================================================
 
 `timescale 1ns/1ps
 import eth_parser_pkg::*;
 
 module ethernet_frame_parser #(
-  parameter int DATA_WIDTH = 64,
-  parameter int USER_WIDTH = 1
+  parameter int DATA_WIDTH = 64
 )(
-  // Fabric clock + reset (from top only)
-  input  logic clk,
-  input  logic rst,
+  input  logic                  clk,
+  input  logic                  rst_n,
 
-  // AXI Stream input
+  // AXI4-Stream input
   input  logic [DATA_WIDTH-1:0] s_axis_tdata,
   input  logic                  s_axis_tvalid,
   output logic                  s_axis_tready,
   input  logic                  s_axis_tlast,
 
-  // AXI Stream output
+  // AXI4-Stream output
   output logic [DATA_WIDTH-1:0] m_axis_tdata,
   output logic                  m_axis_tvalid,
   input  logic                  m_axis_tready,
   output logic                  m_axis_tlast,
 
-  // Parsed metadata
-  //output eth_metadata_t         m_axis_tuser,
-  //output logic                  m_axis_tuser_valid
-
-  // ==========================================================
-  // Parsed metadata
-  // ==========================================================
+  // Metadata output
   output eth_metadata_t         m_axis_tuser,
   output logic                  m_axis_tuser_valid
 );
 
-
-  // ==========================================================
-  // Parameters
-  // ==========================================================
-  localparam int HEADER_BYTES = 14;
-
-  // ==========================================================
-  // Parsed Ethernet fields
-  // ==========================================================
-  mac_addr_t   dest_mac;
-  mac_addr_t   src_mac;
-  ethertype_t  ethertype_raw;
-  logic        fields_valid;
-
   // ==========================================================
   // AXI ingress
   // ==========================================================
-  logic [DATA_WIDTH-1:0] in_tdata;
-  logic                 in_tvalid, in_tready, in_tlast;
+  logic [DATA_WIDTH-1:0] ing_tdata;
+  logic                  ing_tvalid;
+  logic                  ing_tready;
+  logic                  ing_tlast;
+  logic [0:0]            ing_tuser;
 
   axis_ingress #(
-    .DATA_WIDTH(DATA_WIDTH),
-    .USER_WIDTH(USER_WIDTH)
+    .DATA_WIDTH (DATA_WIDTH),
+    .USER_WIDTH (1)
   ) u_ingress (
     .clk      (clk),
-    .rst_n    (~rst),
-
+    .rst_n    (rst_n),
     .s_tdata  (s_axis_tdata),
     .s_tvalid (s_axis_tvalid),
     .s_tready (s_axis_tready),
     .s_tlast  (s_axis_tlast),
-    .s_tuser  ('0),
-
-    .m_tdata  (in_tdata),
-    .m_tvalid (in_tvalid),
-    .m_tready (in_tready),
-    .m_tlast  (in_tlast),
-    .m_tuser  ()
+    .s_tuser  (1'b0),
+    .m_tdata  (ing_tdata),
+    .m_tvalid (ing_tvalid),
+    .m_tready (ing_tready),
+    .m_tlast  (ing_tlast),
+    .m_tuser  (ing_tuser)
   );
 
   // ==========================================================
-  // Skid buffer
+  // AXI skid buffer (elastic boundary)
   // ==========================================================
   logic [DATA_WIDTH-1:0] skid_tdata;
-  logic                 skid_tvalid, skid_tready, skid_tlast;
+  logic                  skid_tvalid;
+  logic                  skid_tready;
+  logic                  skid_tlast;
+  logic [0:0]            skid_tuser;
 
 axis_skid_buffer #(
-  .DATA_WIDTH(DATA_WIDTH)
+  .DATA_W (DATA_WIDTH),
+  .USER_W (1)
 ) u_skid (
-  .clk      (clk),
-  .rst_n    (~rst),
+  .clk            (clk),
+  .rst_n          (rst_n),
 
-  .s_tdata  (in_tdata),
-  .s_tvalid (in_tvalid),
-  .s_tready (in_tready),
-  .s_tlast  (in_tlast),
-  .s_tuser  ('0),
+  // Slave AXI4-Stream (from ingress)
+  .s_axis_tdata   (ing_tdata),
+  .s_axis_tuser   (ing_tuser),
+  .s_axis_tlast   (ing_tlast),
+  .s_axis_tvalid  (ing_tvalid),
+  .s_axis_tready  (ing_tready),
 
-  .m_tdata  (skid_tdata),
-  .m_tvalid (skid_tvalid),
-  .m_tready (skid_tready),
-  .m_tlast  (skid_tlast),
-  .m_tuser  ()
+  // Master AXI4-Stream (to parser / egress)
+  .m_axis_tdata   (skid_tdata),
+  .m_axis_tuser   (skid_tuser),
+  .m_axis_tlast   (skid_tlast),
+  .m_axis_tvalid  (skid_tvalid),
+  .m_axis_tready  (skid_tready)
 );
+
 
 
   // ==========================================================
   // Beat accept
   // ==========================================================
   logic beat_accept;
-  assign beat_accept = skid_tvalid && skid_tready;
+  assign beat_accept = skid_tvalid & skid_tready;
 
   // ==========================================================
   // Frame control FSM
   // ==========================================================
-  logic frame_start, frame_end;
-  logic in_header, in_payload;
+  logic frame_start;
+  logic frame_end;
+  logic in_header;
+  logic in_payload;
   logic header_done;
 
   frame_control_fsm u_fsm (
     .clk         (clk),
-    .rst_n       (~rst),
+    .rst_n       (rst_n),
     .beat_accept (beat_accept),
     .tlast       (skid_tlast),
     .header_done (header_done),
@@ -130,31 +117,30 @@ axis_skid_buffer #(
   );
 
   // ==========================================================
-  // Byte counter
+  // Byte counter (OBSERVATIONAL, FUTURE USE)
   // ==========================================================
-  byte_counter #(
-    .DATA_WIDTH   (DATA_WIDTH),
-    .HEADER_BYTES (HEADER_BYTES)
-  ) u_byte_cnt (
+  logic [15:0] byte_count;
+
+  byte_counter u_byte_counter (
     .clk         (clk),
-    .rst_n       (~rst),
+    .rst_n       (rst_n),
     .beat_accept (beat_accept),
     .frame_start (frame_start),
-    .header_done (header_done)
+    .frame_end   (frame_end),
+    .byte_count  (byte_count)
   );
 
   // ==========================================================
-  // Header shift register (single source of truth)
+  // Header capture
   // ==========================================================
-  logic [HEADER_BYTES*8-1:0] header_bytes;
-  logic                      header_valid;
+  logic [17:0][7:0] header_bytes;
+  logic             header_valid;
 
   header_shift_register #(
-    .DATA_WIDTH   (DATA_WIDTH),
-    .HEADER_BYTES (HEADER_BYTES)
+    .DATA_WIDTH (DATA_WIDTH)
   ) u_hdr_shift (
     .clk          (clk),
-    .rst_n        (~rst),
+    .rst_n        (rst_n),
     .beat_accept  (beat_accept),
     .frame_start  (frame_start),
     .axis_tdata   (skid_tdata),
@@ -163,9 +149,14 @@ axis_skid_buffer #(
   );
 
   // ==========================================================
-  // Ethernet header parser
+  // Ethernet header parsing
   // ==========================================================
-  eth_header_parser u_eth (
+  mac_addr_t   dest_mac;
+  mac_addr_t   src_mac;
+  ethertype_t  ethertype_raw;
+  logic        fields_valid;
+
+  eth_header_parser u_eth_hdr (
     .header_bytes  (header_bytes),
     .header_valid  (header_valid),
     .dest_mac      (dest_mac),
@@ -175,7 +166,7 @@ axis_skid_buffer #(
   );
 
   // ==========================================================
-  // VLAN resolver
+  // VLAN resolution
   // ==========================================================
   logic        vlan_present;
   logic [11:0] vlan_id;
@@ -195,10 +186,9 @@ axis_skid_buffer #(
   );
 
   // ==========================================================
-  // Protocol classifier
+  // Protocol classification
   // ==========================================================
   logic is_ipv4, is_ipv6, is_arp, is_unknown;
-  logic proto_valid;
 
   protocol_classifier u_proto (
     .resolved_ethertype (resolved_ethertype),
@@ -207,53 +197,61 @@ axis_skid_buffer #(
     .is_ipv6            (is_ipv6),
     .is_arp             (is_arp),
     .is_unknown         (is_unknown),
-    .proto_valid        (proto_valid)
+    .proto_valid        ()
   );
 
   // ==========================================================
-  // Metadata packager
+  // Latch header_done (cannot be missed)
   // ==========================================================
-  eth_metadata_t metadata_bus;
+  logic header_done_latched;
 
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+      header_done_latched <= 1'b0;
+    else begin
+      if (header_done)
+        header_done_latched <= 1'b1;
+      if (frame_end)
+        header_done_latched <= 1'b0;
+    end
+  end
+
+  // ==========================================================
+  // Metadata packaging
+  // ==========================================================
   metadata_packager u_meta (
-    .clk            (clk),
-    .rst_n          (~rst),
-    .frame_start    (frame_start),
-    .frame_end      (frame_end),
-
-    .dest_mac       (dest_mac),
-    .src_mac        (src_mac),
-    .vlan_present   (vlan_present),
-    .vlan_id        (vlan_id),
-
-    .proto_valid    (proto_valid),
-    .is_ipv4        (is_ipv4),
-    .is_ipv6        (is_ipv6),
-    .is_arp         (is_arp),
-    .is_unknown     (is_unknown),
-
-    .metadata       (metadata_bus),
-    .metadata_valid (m_axis_tuser_valid)
+    .clk                (clk),
+    .rst_n              (rst_n),
+    .frame_end          (frame_end),
+    .header_done        (header_done_latched),
+    .dest_mac           (dest_mac),
+    .src_mac            (src_mac),
+    .vlan_present       (vlan_present),
+    .vlan_id            (vlan_id),
+    .resolved_ethertype (resolved_ethertype),
+    .l2_header_len      (l2_header_len),
+    .is_ipv4            (is_ipv4),
+    .is_ipv6            (is_ipv6),
+    .is_arp             (is_arp),
+    .is_unknown         (is_unknown),
+    .metadata           (m_axis_tuser),
+    .metadata_valid     (m_axis_tuser_valid)
   );
-
-  assign m_axis_tuser = metadata_bus;
 
   // ==========================================================
   // AXI egress
   // ==========================================================
   axis_egress #(
-    .DATA_WIDTH(DATA_WIDTH),
-    .USER_WIDTH(USER_WIDTH)
+    .DATA_WIDTH (DATA_WIDTH),
+    .USER_WIDTH (1)
   ) u_egress (
     .clk      (clk),
-    .rst_n    (~rst),
-
+    .rst_n    (rst_n),
     .s_tdata  (skid_tdata),
     .s_tvalid (skid_tvalid),
     .s_tready (skid_tready),
     .s_tlast  (skid_tlast),
-    .s_tuser  ('0),
-
+    .s_tuser  (skid_tuser),
     .m_tdata  (m_axis_tdata),
     .m_tvalid (m_axis_tvalid),
     .m_tready (m_axis_tready),
