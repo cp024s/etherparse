@@ -48,42 +48,53 @@ create_project $PROJ_NAME $PROJ_DIR -part $PART -force
 set_property source_mgmt_mode None [current_project]
 
 
-
+# ============================================================
+# RTL SOURCES — CLEAN ORDERED STRUCTURE
+# ============================================================
 # ------------------------------------------------------------
-# RTL sources (STRICT, NO WILDCARDS)
+# 1. Package
 # ------------------------------------------------------------
-
-# Packages
 add_files -norecurse ./pkg/eth_parser_pkg.sv
 
-# AXI infrastructure
-add_files -norecurse ./rtl/axis/axis_ingress.sv
-add_files -norecurse ./rtl/axis/axis_skid_buffer.sv
-add_files -norecurse ./rtl/axis/axis_egress.sv
+# ------------------------------------------------------------
+# 2. Vendor AXIS library (lib/axis)
+# ------------------------------------------------------------
+add_files -norecurse ./rtl/lib/axis/arbiter.v
+add_files -norecurse ./rtl/lib/axis/priority_encoder.v
+add_files -norecurse ./rtl/lib/axis/sync_reset.v
 
-# Parser blocks
-add_files -norecurse ./rtl/parser/frame_control_fsm.sv
-add_files -norecurse ./rtl/parser/byte_counter.sv
-add_files -norecurse ./rtl/parser/header_shift_register.sv
-add_files -norecurse ./rtl/parser/eth_header_parser.sv
-add_files -norecurse ./rtl/parser/vlan_resolver.sv
-add_files -norecurse ./rtl/parser/protocol_classifier.sv
+add_files -norecurse ./rtl/lib/axis/axis_async_fifo.v
+add_files -norecurse ./rtl/lib/axis/axis_async_fifo_adapter.v
+add_files -norecurse ./rtl/lib/axis/axis_fifo.v
+add_files -norecurse ./rtl/lib/axis/axis_fifo_adapter.v
+add_files -norecurse ./rtl/lib/axis/axis_register.v
+add_files -norecurse ./rtl/lib/axis/axis_pipeline_register.v
+add_files -norecurse ./rtl/lib/axis/axis_pipeline_fifo.v
+add_files -norecurse ./rtl/lib/axis/axis_srl_fifo.v
+add_files -norecurse ./rtl/lib/axis/axis_srl_register.v
 
-# Metadata
-add_files -norecurse ./rtl/metadata/metadata_packager.sv
-
-# Core parser
-add_files -norecurse ./rtl/ethernet_frame_parser.sv
 
 # ------------------------------------------------------------
-# MAC Vendor Files (1G RGMII)
+# 3. MAC vendor RTL (only RGMII 1G path)
 # ------------------------------------------------------------
 
-add_files -norecurse ./rtl/mac/vendor/eth_mac_1g_rgmii_fifo.v
-add_files -norecurse ./rtl/mac/vendor/eth_mac_1g_rgmii.v
-add_files -norecurse ./rtl/mac/vendor/eth_mac_1g_fifo.v
-add_files -norecurse ./rtl/mac/vendor/eth_mac_1g.v
+# PHY + SSIO
+add_files -norecurse ./rtl/mac/vendor/iddr.v
+add_files -norecurse ./rtl/mac/vendor/oddr.v
+add_files -norecurse ./rtl/mac/vendor/ssio_ddr_in.v
+add_files -norecurse ./rtl/mac/vendor/ssio_ddr_out.v
+add_files -norecurse ./rtl/mac/vendor/ssio_sdr_in.v
+add_files -norecurse ./rtl/mac/vendor/ssio_sdr_out.v
+add_files -norecurse ./rtl/mac/vendor/ssio_ddr_in_diff.v
+add_files -norecurse ./rtl/mac/vendor/ssio_ddr_out_diff.v
+add_files -norecurse ./rtl/mac/vendor/ssio_sdr_in_diff.v
+add_files -norecurse ./rtl/mac/vendor/ssio_sdr_out_diff.v
 
+add_files -norecurse ./rtl/mac/vendor/gmii_phy_if.v
+add_files -norecurse ./rtl/mac/vendor/rgmii_phy_if.v
+
+# MAC core
+add_files -norecurse ./rtl/mac/vendor/lfsr.v
 add_files -norecurse ./rtl/mac/vendor/axis_gmii_rx.v
 add_files -norecurse ./rtl/mac/vendor/axis_gmii_tx.v
 
@@ -91,14 +102,45 @@ add_files -norecurse ./rtl/mac/vendor/axis_eth_fcs.v
 add_files -norecurse ./rtl/mac/vendor/axis_eth_fcs_insert.v
 add_files -norecurse ./rtl/mac/vendor/axis_eth_fcs_check.v
 
-add_files -norecurse ./rtl/mac/vendor/lfsr.v
-add_files -norecurse ./rtl/mac/vendor/rgmii_phy_if.v
-add_files -norecurse ./rtl/mac/vendor/gmii_phy_if.v
-add_files -norecurse ./rtl/mac/vendor/iddr.v
-add_files -norecurse ./rtl/mac/vendor/oddr.v
+add_files -norecurse ./rtl/mac/vendor/eth_mac_1g.v
+add_files -norecurse ./rtl/mac/vendor/eth_mac_1g_fifo.v
+add_files -norecurse ./rtl/mac/vendor/eth_mac_1g_rgmii.v
+add_files -norecurse ./rtl/mac/vendor/eth_mac_1g_rgmii_fifo.v
 
-# MAC wrapper
+# ------------------------------------------------------------
+# 4. MAC wrapper
+# ------------------------------------------------------------
 add_files -norecurse ./rtl/mac/mac_1g_rgmii_wrapper.sv
+
+# ------------------------------------------------------------
+# 5. Your AXI infra
+# ------------------------------------------------------------
+add_files -norecurse ./rtl/axis/axis_ingress.sv
+add_files -norecurse ./rtl/axis/axis_skid_buffer.sv
+add_files -norecurse ./rtl/axis/axis_egress.sv
+
+# ------------------------------------------------------------
+# 6. Parser Core
+# ------------------------------------------------------------
+add_files -norecurse ./rtl/core/parser/frame_control_fsm.sv
+add_files -norecurse ./rtl/core/parser/byte_counter.sv
+add_files -norecurse ./rtl/core/parser/header_shift_register.sv
+add_files -norecurse ./rtl/core/parser/eth_header_parser.sv
+add_files -norecurse ./rtl/core/parser/vlan_resolver.sv
+add_files -norecurse ./rtl/core/parser/protocol_classifier.sv
+
+add_files -norecurse ./rtl/core/metadata/metadata_packager.sv
+add_files -norecurse ./rtl/core/ethernet_frame_parser.sv
+
+# ------------------------------------------------------------
+# 7. Ethernet Subsystem
+# ------------------------------------------------------------
+add_files -norecurse ./rtl/system/ethernet_subsystem.sv
+
+# ------------------------------------------------------------
+# 8. Board Top
+# ------------------------------------------------------------
+add_files -norecurse ./rtl/top_ax7203.sv
 
 # ------------------------------------------------------------
 # ILA IP (CLI-generated)
