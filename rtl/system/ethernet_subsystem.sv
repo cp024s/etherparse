@@ -17,7 +17,6 @@ module ethernet_subsystem (
     output wire        rgmii_tx_clk,
     output wire [3:0]  rgmii_txd,
     output wire        rgmii_tx_ctl,
-    output wire        phy_reset_n,
 
     // ============================================================
     // Parser Output (for debug / future logic)
@@ -38,13 +37,34 @@ module ethernet_subsystem (
     wire       mac_rx_tuser;
 
     // ============================================================
-    // MAC Wrapper
+    // MAC Wrapper (FIXED)
     // ============================================================
 
     mac_1g_rgmii_wrapper u_mac (
         .clk_125mhz(clk_125mhz),
         .rst(rst),
 
+        // -------------------------
+        // TX (currently unused)
+        // -------------------------
+        .tx_axis_tdata  (8'd0),
+        .tx_axis_tvalid (1'b0),
+        .tx_axis_tlast  (1'b0),
+        .tx_axis_tuser  (1'b0),
+        .tx_axis_tready (),
+
+        // -------------------------
+        // RX (correct port names)
+        // -------------------------
+        .rx_axis_tdata  (mac_rx_tdata),
+        .rx_axis_tvalid (mac_rx_tvalid),
+        .rx_axis_tready (mac_rx_tready),
+        .rx_axis_tlast  (mac_rx_tlast),
+        .rx_axis_tuser  (mac_rx_tuser),
+
+        // -------------------------
+        // RGMII
+        // -------------------------
         .rgmii_rx_clk(rgmii_rx_clk),
         .rgmii_rxd(rgmii_rxd),
         .rgmii_rx_ctl(rgmii_rx_ctl),
@@ -53,13 +73,7 @@ module ethernet_subsystem (
         .rgmii_txd(rgmii_txd),
         .rgmii_tx_ctl(rgmii_tx_ctl),
 
-        .phy_reset_n(phy_reset_n),
-
-        .m_axis_rx_tdata(mac_rx_tdata),
-        .m_axis_rx_tvalid(mac_rx_tvalid),
-        .m_axis_rx_tready(mac_rx_tready),
-        .m_axis_rx_tlast(mac_rx_tlast),
-        .m_axis_rx_tuser(mac_rx_tuser)
+        .speed()
     );
 
     // ============================================================
@@ -76,8 +90,7 @@ module ethernet_subsystem (
     // ============================================================
 
     ethernet_frame_parser #(
-        .DATA_WIDTH(8),
-        .USER_WIDTH(1)
+        .DATA_WIDTH(8)
     )
     u_parser (
         .clk(clk_125mhz),
