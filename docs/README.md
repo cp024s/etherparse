@@ -57,9 +57,7 @@ The subsystem does **not**:
 
 ## 3. System Partitioning
 
-<p align="center">
-  <img src="/docs/assets/system_partitioning.png" width="500">
-</p>
+![System Partitioning](./assets/architecture_diagram.png)
 
 <p align="center">
   <em>Figure 1 — Logical separation between board wrapper, parser core, and downstream logic.</em>
