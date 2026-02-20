@@ -27,7 +27,7 @@ module top_ax7203 (
 );
 
     // ============================================================
-    // Clock Buffer (Use 200 MHz directly for now)
+    // Clock Buffer
     // ============================================================
 
     wire clk_200;
@@ -42,12 +42,8 @@ module top_ax7203 (
         .O  (clk_200)
     );
 
-    // ============================================================
-    // TODO: Replace with MMCM to generate proper 125 MHz
-    // For now: assume external 125 MHz is provided
-    // ============================================================
-
-    wire clk_125mhz = clk_200;   // TEMPORARY (will fix later)
+    // TEMPORARY clock routing (you WILL replace with MMCM later)
+    wire clk_125mhz = clk_200;
 
     // ============================================================
     // Reset Synchronization
@@ -63,6 +59,12 @@ module top_ax7203 (
     end
 
     wire rst = rst_sync[3];
+
+    // ============================================================
+    // Drive PHY Reset (FIXED)
+    // ============================================================
+
+    assign phy_reset_n = ~rst;
 
     // ============================================================
     // Ethernet Subsystem
@@ -83,7 +85,6 @@ module top_ax7203 (
         .rgmii_tx_clk(rgmii_tx_clk),
         .rgmii_txd(rgmii_txd),
         .rgmii_tx_ctl(rgmii_tx_ctl),
-        .phy_reset_n(phy_reset_n),
 
         .parser_valid(parser_valid),
         .parser_last(parser_last),
@@ -100,9 +101,10 @@ module top_ax7203 (
     assign led[3] = clk_125mhz;
 
     // ============================================================
-    // ILA Debug
+    // ILA TEMPORARILY DISABLED (FIXED)
     // ============================================================
 
+    /*
     ila_0 u_ila (
         .clk    (clk_125mhz),
         .probe0 (parser_valid),
@@ -111,5 +113,6 @@ module top_ax7203 (
         .probe3 (rgmii_rx_ctl),
         .probe4 (rgmii_rxd)
     );
+    */
 
 endmodule
