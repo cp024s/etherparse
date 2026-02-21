@@ -2,8 +2,9 @@
 
 module mac_1g_rgmii_wrapper
 (
-    input  wire        clk_125mhz,
-    input  wire        rst,
+    input  wire clk_125,
+    input  wire clk_125_90,
+    input  wire rst,
 
     /*
      * AXI Stream TX (from your parser or upstream logic)
@@ -14,9 +15,8 @@ module mac_1g_rgmii_wrapper
     input  wire        tx_axis_tuser,
     output wire        tx_axis_tready,
 
-    /*
-     * AXI Stream RX (to your parser)
-     */
+
+    //  AXI Stream RX (to your parser)
     output wire [7:0]  rx_axis_tdata,
     output wire        rx_axis_tvalid,
     output wire        rx_axis_tlast,
@@ -41,17 +41,17 @@ module mac_1g_rgmii_wrapper
         .TARGET("XILINX"),
         .IODDR_STYLE("IODDR"),
         .CLOCK_INPUT_STYLE("BUFG"),
-        .USE_CLK90("TRUE"),
+        .USE_CLK90("FALSE"),
         .AXIS_DATA_WIDTH(8)
     )
     u_mac (
         /*
          * Clocks & resets
          */
-        .gtx_clk        (clk_125mhz),
-        .gtx_clk90      (clk_125mhz),   // TEMP: no phase shift yet
+        .gtx_clk        (clk_125),
+        .gtx_clk90      (clk_125),
         .gtx_rst        (rst),
-        .logic_clk      (clk_125mhz),
+        .logic_clk      (clk_125),
         .logic_rst      (rst),
 
         /*
