@@ -67,28 +67,26 @@ module ethernet_frame_parser #(
   logic [0:0]            skid_tuser;
 
 axis_skid_buffer #(
-  .DATA_W (DATA_WIDTH),
-  .USER_W (1)
+  .DATA_WIDTH (DATA_WIDTH),
+  .USER_WIDTH (1)
 ) u_skid (
-  .clk            (clk),
-  .rst_n          (rst_n),
+  .clk      (clk),
+  .rst_n    (rst_n),
 
-  // Slave AXI4-Stream (from ingress)
-  .s_axis_tdata   (ing_tdata),
-  .s_axis_tuser   (ing_tuser),
-  .s_axis_tlast   (ing_tlast),
-  .s_axis_tvalid  (ing_tvalid),
-  .s_axis_tready  (ing_tready),
+  // Slave (from ingress)
+  .s_tdata  (ing_tdata),
+  .s_tvalid (ing_tvalid),
+  .s_tlast  (ing_tlast),
+  .s_tuser  (ing_tuser),
+  .s_tready (ing_tready),
 
-  // Master AXI4-Stream (to parser / egress)
-  .m_axis_tdata   (skid_tdata),
-  .m_axis_tuser   (skid_tuser),
-  .m_axis_tlast   (skid_tlast),
-  .m_axis_tvalid  (skid_tvalid),
-  .m_axis_tready  (skid_tready)
+  // Master (to parser / egress)
+  .m_tdata  (skid_tdata),
+  .m_tvalid (skid_tvalid),
+  .m_tlast  (skid_tlast),
+  .m_tuser  (skid_tuser),
+  .m_tready (skid_tready)
 );
-
-
 
   // ==========================================================
   // Beat accept
@@ -120,21 +118,23 @@ axis_skid_buffer #(
   // ==========================================================
   // Byte counter (OBSERVATIONAL, FUTURE USE)
   // ==========================================================
-  logic [15:0] byte_count;
+  //logic [15:0] byte_count;
 
-  byte_counter u_byte_counter (
-    .clk         (clk),
-    .rst_n       (rst_n),
-    .beat_accept (beat_accept),
-    .frame_start (frame_start),
-    .frame_end   (frame_end),
-    .byte_count  (byte_count)
-  );
+byte_counter #(
+  .DATA_WIDTH   (DATA_WIDTH),
+  .HEADER_BYTES (14)
+) u_byte_counter (
+  .clk         (clk),
+  .rst_n       (rst_n),
+  .beat_accept (beat_accept),
+  .frame_start (frame_start),
+  .header_done (header_done)
+);
 
   // ==========================================================
   // Header capture
   // ==========================================================
-  logic [17:0][7:0] header_bytes;
+  logic [13:0][7:0] header_bytes;
   logic             header_valid;
 
   header_shift_register #(
@@ -189,6 +189,7 @@ axis_skid_buffer #(
   // ==========================================================
   // Protocol classification
   // ==========================================================
+  logic proto_valid;
   logic is_ipv4, is_ipv6, is_arp, is_unknown;
 
   protocol_classifier u_proto (
@@ -220,25 +221,27 @@ axis_skid_buffer #(
   // ==========================================================
   // Metadata packaging
   // ==========================================================
-  metadata_packager u_meta (
-    .clk                (clk),
-    .rst_n              (rst_n),
-    .frame_end          (frame_end),
-    .header_done        (header_done_latched),
-    .dest_mac           (dest_mac),
-    .src_mac            (src_mac),
-    .vlan_present       (vlan_present),
-    .vlan_id            (vlan_id),
-    .resolved_ethertype (resolved_ethertype),
-    .l2_header_len      (l2_header_len),
-    .is_ipv4            (is_ipv4),
-    .is_ipv6            (is_ipv6),
-    .is_arp             (is_arp),
-    .is_unknown         (is_unknown),
-    .metadata           (m_axis_tuser),
-    .metadata_valid     (m_axis_tuser_valid)
-  );
+metadata_packager u_meta (
+  .clk          (clk),
+  .rst_n        (rst_n),
 
+  .frame_start  (frame_start),
+  .frame_end    (frame_end),
+
+  .dest_mac     (dest_mac),
+  .src_mac      (src_mac),
+  .vlan_present (vlan_present),
+  .vlan_id      (vlan_id),
+
+  .proto_valid  (proto_valid),
+  .is_ipv4      (is_ipv4),
+  .is_ipv6      (is_ipv6),
+  .is_arp       (is_arp),
+  .is_unknown   (is_unknown),
+
+  .metadata        (m_axis_tuser),
+  .metadata_valid  (m_axis_tuser_valid)
+);
   // ==========================================================
   // AXI egress
   // ==========================================================
