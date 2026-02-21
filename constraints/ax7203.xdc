@@ -4,27 +4,24 @@
 # ============================================================
 
 # ============================================================
-# 200 MHz Differential Clock (BANK34, 1.5V DDR bank)
+# 200 MHz Differential Clock (Bank34 → 2.5V)
 # ============================================================
 
 set_property PACKAGE_PIN R4 [get_ports sys_clk_p]
 set_property PACKAGE_PIN T4 [get_ports sys_clk_n]
 
-# Correct standard for 1.5V bank differential clock
-set_property IOSTANDARD DIFF_SSTL15 [get_ports {sys_clk_p sys_clk_n}]
-
-# Enable internal termination (recommended)
+set_property IOSTANDARD LVDS_25 [get_ports {sys_clk_p sys_clk_n}]
 set_property DIFF_TERM TRUE [get_ports {sys_clk_p sys_clk_n}]
 
 create_clock -period 5.000 -name sys_clk -waveform {0 2.5} [get_ports sys_clk_p]
 
 # ============================================================
-# Reset Button (BANK34 → 1.5V)
+# Reset Button (BANK34 → 2.5V)
 # Manual Page 22
 # ============================================================
 
 set_property PACKAGE_PIN T6 [get_ports rst_n]
-set_property IOSTANDARD LVCMOS15 [get_ports rst_n]
+set_property IOSTANDARD LVCMOS25 [get_ports rst_n]
 set_property PULLUP true [get_ports rst_n]
 
 set_false_path -from [get_ports rst_n]
@@ -81,3 +78,42 @@ set_property IOSTANDARD LVCMOS33 [get_ports rgmii_rx_ctl]
 # PHY Reset (BANK16)
 set_property PACKAGE_PIN D16 [get_ports phy_reset_n]
 set_property IOSTANDARD LVCMOS33 [get_ports phy_reset_n]
+
+# ============================================================
+# ================= RGMII TIMING CONSTRAINTS =================
+# Target: PHY1 (RGMII-ID assumed)
+# Speed : 1G (125 MHz)
+# ============================================================
+
+# ------------------------------------------------------------
+# 1) Define RX clock coming from PHY
+# ------------------------------------------------------------
+create_clock -name rgmii_rx_clk \
+             -period 8.000 \
+             [get_ports rgmii_rx_clk]
+
+# ------------------------------------------------------------
+# 2) RGMII RX input delays (PHY inserts internal delay)
+# Conservative safe window for RGMII-ID
+# ------------------------------------------------------------
+set_input_delay -clock rgmii_rx_clk -max 2.0 \
+    [get_ports {rgmii_rxd[*] rgmii_rx_ctl}]
+
+set_input_delay -clock rgmii_rx_clk -min 0.0 \
+    [get_ports {rgmii_rxd[*] rgmii_rx_ctl}]
+
+# ------------------------------------------------------------
+# 3) Define TX clock (generated from internal GTX clock)
+# ------------------------------------------------------------
+create_generated_clock -name rgmii_tx_clk \
+    -source [get_ports rgmii_tx_clk] \
+    [get_ports rgmii_tx_clk]
+
+# ------------------------------------------------------------
+# 4) RGMII TX output delays
+# ------------------------------------------------------------
+set_output_delay -clock rgmii_tx_clk -max 2.0 \
+    [get_ports {rgmii_txd[*] rgmii_tx_ctl}]
+
+set_output_delay -clock rgmii_tx_clk -min -0.5 \
+    [get_ports {rgmii_txd[*] rgmii_tx_ctl}]
