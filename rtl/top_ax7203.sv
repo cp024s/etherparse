@@ -43,7 +43,16 @@ module top_ax7203 (
     );
 
     // TEMPORARY clock routing (you WILL replace with MMCM later)
-    wire clk_125mhz = clk_200;
+    wire clk_125;
+    wire clk_125_90;
+    wire clk_locked;
+
+    clk_wiz_0 u_clk_wiz (
+        .clk_in1  (clk_200),
+        .clk_out1 (clk_125),
+        .clk_out2 (clk_125_90),
+        .locked   (clk_locked)
+    );
 
     // ============================================================
     // Reset Synchronization
@@ -51,8 +60,8 @@ module top_ax7203 (
 
     reg [3:0] rst_sync;
 
-    always @(posedge clk_125mhz or negedge rst_n) begin
-        if (!rst_n)
+    always @(posedge clk_125 or negedge rst_n) begin
+        if (!rst_n || !clk_locked)
             rst_sync <= 4'b1111;
         else
             rst_sync <= {rst_sync[2:0], 1'b0};
@@ -75,7 +84,8 @@ module top_ax7203 (
     wire parser_meta_valid;
 
     ethernet_subsystem u_eth_sys (
-        .clk_125mhz(clk_125mhz),
+        .clk_125     (clk_125),
+        .clk_125_90  (clk_125_90),
         .rst(rst),
 
         .rgmii_rx_clk(rgmii_rx_clk),
@@ -95,11 +105,10 @@ module top_ax7203 (
     // LED Debug
     // ============================================================
 
-    assign led[0] = parser_valid;
-    assign led[1] = parser_last;
-    assign led[2] = parser_meta_valid;
-    assign led[3] = clk_125mhz;
-
+    assign led[0] = ~rgmii_rx_ctl;
+    assign led[1] = ~rgmii_rxd[0];
+    assign led[2] = ~rgmii_rxd[1];
+    assign led[3] = ~rgmii_rx_clk;
     // ============================================================
     // ILA TEMPORARILY DISABLED (FIXED)
     // ============================================================
