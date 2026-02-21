@@ -22,7 +22,8 @@ if {$MODE eq ""} {
 # ----------------------------
 set PROJ_NAME ethernet_parser_ss
 set PROJ_DIR  build/vivado
-set PART      xc7vx690tffg1761-2   ;# AX7203
+set PART xc7a200tfbg484-1 
+#set PART      xc7vx690tffg1761-2   ;# AX7203
 
 file mkdir $PROJ_DIR
 create_project $PROJ_NAME $PROJ_DIR -part $PART -force
@@ -72,6 +73,16 @@ if {$MODE eq "sim"} {
     close_sim
     exit 0
 }
+
+# ============================================================
+# Ensure Clock Wizard IP exists
+# ============================================================
+
+if {[llength [get_ips clk_wiz_0]] == 0} {
+    source scripts/create_clk_wiz.tcl
+}
+
+read_ip [get_ips clk_wiz_0]
 
 # ============================================================
 # 3️⃣ SYNTHESIS
