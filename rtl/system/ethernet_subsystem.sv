@@ -4,7 +4,8 @@ module ethernet_subsystem (
     // ============================================================
     // Clock / Reset
     // ============================================================
-    input  wire        clk_125mhz,
+    input wire clk_125,
+    input wire clk_125_90,
     input  wire        rst,
 
     // ============================================================
@@ -41,8 +42,9 @@ module ethernet_subsystem (
     // ============================================================
 
     mac_1g_rgmii_wrapper u_mac (
-        .clk_125mhz(clk_125mhz),
-        .rst(rst),
+        .clk_125      (clk_125),
+        .clk_125_90   (clk_125_90),
+        .rst          (rst),
 
         // -------------------------
         // TX (currently unused)
@@ -93,12 +95,12 @@ module ethernet_subsystem (
         .DATA_WIDTH(8)
     )
     u_parser (
-        .clk(clk_125mhz),
-        .rst(rst),
+        .clk(clk_125),
+        .rst_n(~rst),
 
         .s_axis_tdata(mac_rx_tdata),
         .s_axis_tvalid(mac_rx_tvalid),
-        .s_axis_tready(mac_rx_tready),
+        .s_axis_tready(mac_rx_tready),  
         .s_axis_tlast(mac_rx_tlast),
 
         .m_axis_tdata(parser_tdata),
