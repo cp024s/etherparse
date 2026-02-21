@@ -143,6 +143,22 @@ add_files -norecurse ./rtl/system/ethernet_subsystem.sv
 add_files -norecurse ./rtl/top_ax7203.sv
 
 # ------------------------------------------------------------
+# Clock Wizard IP (STATIC .xci)
+# ------------------------------------------------------------
+
+puts "=== Adding Clock Wizard IP ==="
+
+add_files -norecurse ./ip/clk_wiz_0/clk_wiz_0.xci
+
+# Ensure IP output products are generated
+generate_target all [get_files clk_wiz_0.xci]
+
+# Synthesize IP
+synth_ip [get_ips clk_wiz_0]
+
+update_compile_order -fileset sources_1
+
+# ------------------------------------------------------------
 # ILA IP (CLI-generated)
 # ------------------------------------------------------------
 
